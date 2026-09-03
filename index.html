@@ -1,0 +1,2736 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f2f2f5">
+<title>DRAGLOG</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="logo.svg">
+<link rel="apple-touch-icon" href="logo.svg">
+<style>
+/* ============================================================
+   THEME -- tout passe par des variables, jamais de couleur en dur.
+   Trois etats a couvrir, pas deux :
+     :root            -> clair, et sert de repli partout
+     prefers-color-scheme:dark -> le telephone est en sombre
+     [data-theme=...] -> l'utilisateur a choisi, et son choix gagne
+   Le garde :not([data-theme=light]) sur le media query evite qu'un
+   telephone en sombre ecrase un choix explicite de clair.
+   ============================================================ */
+:root{
+  --bg:#f2f2f5;      --card:#ffffff;    --ink:#1b1b1f;   --ink2:#5c5c66;
+  --line:#d6d6dd;    --field:#ffffff;   --chip:#e6e6ec;  --chip-ink:#1b1b1f;
+  --btn:#1b1b1f;     --btn-ink:#ffffff; --btn2:#5c5c66;  --btn-off:#b4b4be;
+  --accent:#0a8f63;  --gps:#0a8f63;     --g:#c26100;     --imu:#0b63c6;
+  --danger:#b02020;
+  --ok-bg:#e6f6ed;   --ok-line:#a9d9bd; --ok-ink:#0a5c38;
+  --err-bg:#fbeaea;  --err-line:#e0b7b7;--err-ink:#8f1c1c;
+  --note-bg:#fff6e0; --note-line:#e0c880;--note-ink:#6b4e00;
+  --info-bg:#e8f1eb; --info-line:#a8ccb5;
+  --grid:#dddde3;    --zero:#e8cfae;
+  --ombre:0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme=light]){
+    --bg:#111114;     --card:#1b1b20;    --ink:#ececee;   --ink2:#9d9daa;
+    --line:#32323c;   --field:#242430;   --chip:#2c2c36;  --chip-ink:#ececee;
+    --btn:#ececee;    --btn-ink:#111114; --btn2:#3d3d4a;  --btn-off:#3a3a44;
+    --accent:#2fc78d; --gps:#2fc78d;     --g:#e8912f;     --imu:#5aa8f0;
+    --danger:#e8736b;
+    --ok-bg:#14301f;  --ok-line:#2c5c40; --ok-ink:#7fd6a5;
+    --err-bg:#331a1a; --err-line:#5c2e2e;--err-ink:#f0a09a;
+    --note-bg:#2c2616;--note-line:#5c4d2a;--note-ink:#e8c87a;
+    --info-bg:#16281f;--info-line:#2c4a38;
+    --grid:#2a2a33;   --zero:#4a3d28;
+    --ombre:0 1px 3px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme=dark]{
+  --bg:#111114;     --card:#1b1b20;    --ink:#ececee;   --ink2:#9d9daa;
+  --line:#32323c;   --field:#242430;   --chip:#2c2c36;  --chip-ink:#ececee;
+  --btn:#ececee;    --btn-ink:#111114; --btn2:#3d3d4a;  --btn-off:#3a3a44;
+  --accent:#2fc78d; --gps:#2fc78d;     --g:#e8912f;     --imu:#5aa8f0;
+  --danger:#e8736b;
+  --ok-bg:#14301f;  --ok-line:#2c5c40; --ok-ink:#7fd6a5;
+  --err-bg:#331a1a; --err-line:#5c2e2e;--err-ink:#f0a09a;
+  --note-bg:#2c2616;--note-line:#5c4d2a;--note-ink:#e8c87a;
+  --info-bg:#16281f;--info-line:#2c4a38;
+  --grid:#2a2a33;   --zero:#4a3d28;
+  --ombre:0 1px 3px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box;}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+     max-width:780px;margin:0 auto;padding:16px 16px 48px;
+     background:var(--bg);color:var(--ink);
+     -webkit-text-size-adjust:100%;}
+h1{font-size:24px;}
+h2{font-size:18px;margin:0 0 10px 0;letter-spacing:-.01em;}
+h3{color:var(--ink);}
+a{color:var(--accent);}
+.card{background:var(--card);padding:16px;border-radius:14px;
+      border:1px solid var(--line);box-shadow:var(--ombre);margin-bottom:14px;}
+label{display:block;margin-top:12px;font-weight:600;}
+select,input[type=number],input[type=text],input[type=password]{
+  width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);
+  border-radius:9px;background:var(--field);color:var(--ink);
+  font-size:16px;font-family:inherit;}
+select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.btn{display:inline-block;margin-top:16px;margin-right:8px;padding:12px 18px;
+     border:none;border-radius:11px;background:var(--btn);color:var(--btn-ink);
+     font-size:16px;font-family:inherit;cursor:pointer;text-decoration:none;}
+.btn2{background:var(--btn2);color:#fff;}
+.btn3{background:var(--accent);color:#fff;}
+.btn:disabled{background:var(--btn-off);color:var(--ink2);cursor:default;}
+.ok{padding:12px;background:var(--ok-bg);border:1px solid var(--ok-line);
+    color:var(--ok-ink);border-radius:9px;}
+.err{padding:12px;background:var(--err-bg);border:1px solid var(--err-line);
+     color:var(--err-ink);border-radius:9px;}
+.small{color:var(--ink2);font-size:14px;}
+.tb{padding:7px 14px;margin-right:6px;border:none;border-radius:9px;
+    background:var(--chip);color:var(--chip-ink);font-size:14px;
+    font-family:inherit;cursor:pointer;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
+@media (max-width:600px){.row,.grid{grid-template-columns:1fr;}}
+
+/* Bascule de theme : discrete, en haut a droite, toujours atteignable. */
+#themeBtn{position:absolute;top:14px;right:14px;width:38px;height:38px;
+  border:1px solid var(--line);border-radius:50%;background:var(--card);
+  color:var(--ink);font-size:17px;line-height:1;cursor:pointer;padding:0;}
+#entete{position:relative;}
+@media (prefers-reduced-motion:no-preference){
+  body,.card,.tb,select,input{transition:background-color .15s,color .15s,border-color .15s;}
+}
+</style>
+</head>
+<body>
+
+<div id="entete">
+<img src="logo.svg" alt="DRAGLOG" style="display:block;height:auto;width:auto;max-width:220px;max-height:110px;margin:4px auto 20px;">
+<button type="button" id="themeBtn" onclick="basculerTheme()" title="Clair, sombre, ou comme le telephone">🌗</button>
+<!-- ⚠ VERSION DE LA PAGE, VISIBLE.
+     Sans elle, impossible de savoir en un coup d'oeil si le navigateur sert
+     la page publiee ou une copie gardee en cache. Le 27 aout 2026 on a
+     cherche pendant une heure un defaut de firmware alors que la page
+     affichee datait de trois versions plus tot.
+     A monter EN MEME TEMPS que CACHE dans service-worker.js. -->
+<!-- ⚠ VERSION DU FIRMWARE, a cote de celle de la page.
+     Meme raison que ci-dessus, pour l'autre moitie du couple : sans elle on
+     cherche un defaut dans un firmware qu'on croit a jour. Remplie a la
+     connexion depuis la cle "fw" du JSON de config, que le DLPT2 et le DLAP
+     envoient tous les deux.
+     ⚠ AFFICHAGE SEULEMENT. Ne JAMAIS s'en servir pour decider quels
+     reglages montrer : ca se decide par les CLES du JSON. Un module reste
+     au champ doit rester pilotable meme si son numero est inconnu d'ici. -->
+<div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.65;">page fusion v1<span id="fwVer"></span></div>
+</div>
+
+<script>
+// ============================================================
+// THEME -- pose AVANT le reste de la page pour eviter le flash blanc.
+// Trois etats et non deux : "auto" suit le telephone, et c'est le
+// defaut. Un choix explicite est garde d'une visite a l'autre.
+// localStorage peut lever (navigation privee, site data bloque) :
+// tout est donc sous try/catch, et l'absence de valeur retombe sur auto.
+// ============================================================
+function appliquerTheme(t){
+  var r = document.documentElement;
+  if (t === 'dark' || t === 'light') r.setAttribute('data-theme', t);
+  else r.removeAttribute('data-theme');
+  var b = document.getElementById('themeBtn');
+  if (b) b.textContent = (t === 'dark') ? '🌙' : (t === 'light') ? '☀️' : '🌗';
+  // La barre du navigateur doit suivre, sinon elle jure en plein ecran.
+  var sombre = (t === 'dark') ||
+               (t !== 'light' && window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var m = document.querySelector('meta[name=theme-color]');
+  if (m) m.setAttribute('content', sombre ? '#111114' : '#f2f2f5');
+  if (typeof draw === 'function') { try { draw(); } catch (e) {} }
+}
+// ⚠ L'ETAT VIT EN MEMOIRE, PAS DANS localStorage.
+//
+// Bogue trouve au banc le 26 aout 2026 : le bouton restait coince sur
+// "clair". En navigation privee -- et sur tout appareil qui bloque les
+// donnees de site -- localStorage leve a la LECTURE comme a l'ecriture.
+// L'ancienne version relisait le stockage a chaque appui : elle recevait
+// toujours "auto", et refaisait donc toujours le premier pas du cycle.
+// Le mode sombre etait inatteignable, sans le moindre message.
+//
+// Le stockage ne sert plus qu'a SE SOUVENIR d'une visite a l'autre. S'il
+// echoue, le bouton fonctionne quand meme, il oublie juste au rechargement.
+var themeActuel = 'auto';
+try { themeActuel = localStorage.getItem('draglog-theme') || 'auto'; } catch (e) {}
+if (themeActuel !== 'light' && themeActuel !== 'dark') themeActuel = 'auto';
+
+function themeCourant(){ return themeActuel; }
+
+function basculerTheme(){
+  var suite = { auto:'light', light:'dark', dark:'auto' };
+  themeActuel = suite[themeActuel] || 'light';
+  try { localStorage.setItem('draglog-theme', themeActuel); } catch (e) {}
+  appliquerTheme(themeActuel);
+}
+appliquerTheme(themeActuel);
+// Le telephone peut basculer pendant qu'on regarde -- en mode auto, suivre.
+if (window.matchMedia) {
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
+      if (themeCourant() === 'auto') appliquerTheme('auto');
+    });
+  } catch (e) {}
+}
+// Lit une variable du theme pour le canvas, qui ne sait pas resoudre var().
+function couleur(nom){
+  return getComputedStyle(document.documentElement).getPropertyValue(nom).trim() || '#888';
+}
+</script>
+
+<div class="card" id="connCard">
+<h2>Connexion</h2>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+<button type="button" class="btn" id="btnConnect" style="margin-top:0;" onclick="connect()">Connecter</button>
+<span id="connStatus" class="small">Pas connecté</span>
+</div>
+<div id="bleUnsupported" class="err small" style="margin-top:12px;display:none;">
+Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhone, il faut l'app <b>Bluefy</b> — un navigateur tiers de l'App Store, pas un produit Apple.
+</div>
+</div>
+
+<!-- =================================================================
+     [FUSION] L'INTERRUPTEUR DE MÉTIER
+     =================================================================
+     ⚠ LE MAÎTRE EST DANS LA VOITURE, PAS ICI. Cette carte montre ce que
+     le module DIT être, et lui demande de changer. Elle ne décide rien
+     toute seule. Un module rallumé seul au champ garde son métier, et le
+     premier téléphone qui se connecte s'y range.
+
+     ⚠ ELLE RESTE VISIBLE DANS LES DEUX MÉTIERS. Si elle disparaissait en
+     mode TRLG, il n'y aurait plus aucune marche arrière : le maître est
+     dans la voiture, et on ne pourrait plus jamais revenir à DRAGLOGICS.
+================================================================== -->
+<div class="card" id="grp_app" style="display:none;">
+<h2>Métier de l'appareil</h2>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+  <button type="button" class="btn" id="btnAppDlg"  style="margin-top:0;flex:1;" onclick="appDemander('dlg')">DRAGLOGICS</button>
+  <button type="button" class="btn" id="btnAppTrlg" style="margin-top:0;flex:1;" onclick="appDemander('trlg')">TRLG</button>
+</div>
+<p class="small" id="appEtat" style="margin-top:10px;"></p>
+<p class="small" style="opacity:.7;margin-top:6px;">
+  <b>DRAGLOGICS</b> — courses en ligne droite, jalons. Le beacon du relais est <b>ignoré</b>.<br>
+  <b>TRLG</b> — tours de piste. Le module <b>écoute</b> le beacon du relais.
+</p>
+<p class="small" id="appAvert" class="err" style="margin-top:8px;display:none;"></p>
+</div>
+
+<!-- =================================================================
+     [FUSION] LE RELAIS TRLG — deuxième connexion, indépendante
+     =================================================================
+     ⚠ DEUX APPAREILS, DEUX CONNEXIONS. Le module de la voiture porte le
+     métier et les réglages ; le relais porte les tours. Les garder
+     séparées est ce qui laisse la marche arrière possible : on peut
+     toujours joindre la voiture pour reprendre la main, même quand le
+     relais est ce qu'on regarde.
+================================================================== -->
+<div class="card" id="grp_relais" style="display:none;">
+<h2>Relais TRLG</h2>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+<button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
+<span id="relaisStatus" class="small">Pas connecté</span>
+</div>
+<div id="relaisBloc" style="margin-top:14px;display:none;">
+  <div class="grid" id="relaisGrid"></div>
+  <canvas id="speedMap" style="width:100%;margin-top:14px;border-radius:10px;display:none;"></canvas>
+  <div id="speedLegend" class="small" style="margin-top:6px;"></div>
+  <div id="relaisTours" style="margin-top:14px;"></div>
+</div>
+</div>
+
+<div class="card">
+<h2>Mise à jour</h2>
+<p class="small">Le module ouvre un WiFi le temps de la mise à jour. Pas besoin de câble. Le Bluetooth se coupe pendant ce temps-là.</p>
+<button type="button" class="btn btn2" id="btnOta" style="margin-top:0;" onclick="startOta()">Passer en mise à jour</button>
+<div id="otaMsg" style="margin-top:12px;"></div>
+</div>
+
+<div class="card"><h2>Vitesse</h2>
+<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+<span id="spd" style="font-size:42px;font-weight:bold;">--</span>
+<span class="small">km/h</span>
+<span id="gval" style="font-size:22px;font-weight:bold;color:var(--g);margin-left:14px;">--</span>
+<span class="small">G (GPS)</span>
+<span id="gimu" style="font-size:22px;font-weight:bold;color:var(--imu);margin-left:14px;">--</span>
+<span class="small">G (IMU)</span>
+<span id="meta" class="small" style="margin-left:auto"></span>
+</div>
+<div id="imuLine" class="small" style="margin-bottom:8px;display:none;"></div>
+<div style="margin-bottom:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+<span class="small">Fenetre : </span>
+<button type="button" class="tb" id="w5" onclick="setWin(5)">5 s</button>
+<button type="button" class="tb" id="w10" onclick="setWin(10)">10 s</button>
+<button type="button" class="tb" id="w30" onclick="setWin(30)">30 s</button>
+<button type="button" class="tb" id="wLive" onclick="resumeLive()" style="background:var(--danger);color:#fff;display:none;">Reprendre en direct</button>
+<label class="small" style="display:flex;align-items:center;gap:6px;margin:0;font-weight:normal;">Filtre G
+<select id="gf" onchange="setGFilter()" style="width:auto;padding:6px;margin:0;"></select></label>
+<span class="small"><span style="display:inline-block;width:10px;height:10px;background:var(--gps);border-radius:2px;"></span> vitesse &nbsp; <span style="display:inline-block;width:10px;height:10px;background:var(--g);border-radius:2px;"></span> G</span>
+</div>
+<canvas id="cv" width="720" height="240" style="width:100%;height:auto;"></canvas>
+</div>
+
+<div class="card"><h2>Chrono</h2>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+<button type="button" class="btn" style="margin-top:0;" onclick="perfReset()">Reset</button>
+<button type="button" class="btn btn2" style="margin-top:0;" onclick="perfSim()">Simuler un passage</button>
+<label class="small" style="display:flex;align-items:center;gap:6px;margin:0;font-weight:normal;">Offset rollout
+<select id="ofs" onchange="setOfs()" style="width:auto;padding:6px;margin:0;"></select></label>
+<span id="perfSt" class="small" style="font-size:15px;">--</span>
+</div>
+<div id="tbCard" style="display:none;align-items:center;gap:12px;margin-bottom:12px;padding:10px 14px;border-radius:10px;background:var(--chip);">
+<span id="tbLed" style="width:20px;height:20px;border-radius:50%;background:var(--btn-off);flex:none;box-shadow:inset 0 0 0 2px rgba(0,0,0,.15);"></span>
+<b id="tbTxt" style="font-size:17px;">Transbrake --</b>
+<span id="tbHint" class="small" style="margin-left:auto;"></span>
+</div>
+<div class="grid">
+<div class="small" id="pPartLbl" style="display:none;">Distance partielle</div><div id="pPartVal" style="display:none;"><b id="pPart">--</b></div>
+<div class="small">60 pieds</div><div><b id="p60">--</b></div>
+<div class="small">330 pieds</div><div><b id="p330">--</b></div>
+<div class="small">660 pieds (1/8 mi)</div><div><b id="p660">--</b></div>
+<div class="small">1320 pieds (1/4 mi)</div><div><b id="p1320">--</b></div>
+</div>
+</div>
+
+<div class="card"><h2>Calibration</h2>
+<div class="grid" id="calGrid">
+<div class="small">Etat</div><div><b id="calState">--</b></div>
+</div>
+<button type="button" class="btn btn3" id="btnCal" onclick="doCalib()">Calibrer</button>
+<div id="calMsg" class="small" style="margin-top:10px;"></div>
+<p class="small" style="margin-top:8px;">
+Voiture <b>arrêtée, sur du plat</b>, moteur coupé si possible.
+Ne touche à rien pendant 3 secondes.<br>
+À refaire si tu déplaces le module, ou si tu changes de voiture.
+</p>
+</div>
+
+<div class="card"><h2>Tes passages</h2>
+<p class="small">Envoie sur GitHub les passages gardés dans le module. Il en garde six au maximum.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+<button type="button" class="btn btn3" id="btnGhRuns" style="margin-top:0;" onclick="fetchAndSendToGithub()">Envoyer sur GitHub</button>
+</div>
+<div id="dumpStatus" class="small" style="margin-top:10px;"></div>
+<div id="ghTokState" class="small" style="margin-top:6px;"></div>
+<div class="small" style="margin-top:6px;"><a href="#" onclick="resetGhToken();return false;">changer le jeton GitHub</a></div>
+</div>
+
+<!-- ============ HISTORIQUE DLAP ============ -->
+<!-- Visible UNIQUEMENT devant un DLAP qui sait servir son historique.
+     Le DLPT a deja sa propre carte de passages, juste au-dessus. -->
+<div class="card" id="cardHist" style="display:none;">
+<h2>Passages archivés</h2>
+<p class="small">Ce que le DLAP a reçu, du plus récent au plus ancien. Il en garde
+trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+<button type="button" class="btn btn3" id="btnHist" style="margin-top:0;" onclick="chargerHistorique()">Voir les passages</button>
+<span id="histStatus" class="small"></span>
+</div>
+<div id="histTable" style="margin-top:12px;overflow-x:auto;"></div>
+</div>
+
+<div class="card"><h2>État</h2><div class="grid" id="etatGrid">
+<div class="small">Connexion</div><div><b>connecte-toi pour voir</b></div>
+</div></div>
+
+<div class="card"><h2>Réglages</h2>
+<form id="cfgForm" onsubmit="return submitConfig(event)">
+
+<div id="fwBanner" class="small" style="display:none;padding:10px 12px;border-radius:8px;
+     background:var(--note-bg);border:1px solid var(--note-line);margin-bottom:14px;"></div>
+
+<!-- ============ PANNEAU DLAP ============ -->
+<!-- Affiche UNIQUEMENT quand le module repond "dev":"DLAP". Tous les
+     reglages DRAGLOG sont alors masques : ce n'est pas le meme appareil. -->
+<div id="panDlap" style="display:none;">
+<div class="small" style="padding:10px 12px;border-radius:8px;background:var(--info-bg);
+     border:1px solid var(--info-line);margin-bottom:14px;">
+<b>DLAP connecte.</b> Ce module ne mesure rien : il collecte les runs des
+DLPT2 par radio et les depose sur GitHub. Les reglages ci-dessous sont les siens.
+</div>
+
+<h3 style="margin:18px 0 0 0;font-size:16px;">Reseau principal</h3>
+<label for="dssid1">Nom du réseau</label>
+<input id="dssid1" type="text" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<label for="dpass1">Mot de passe</label>
+<input id="dpass1" type="password" autocomplete="new-password"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<p class="small" id="dpass1Etat"></p>
+
+<h3 style="margin:18px 0 0 0;font-size:16px;">Reseau de repli</h3>
+<p class="small">Essaye seulement si le principal ne repond pas. Laisse vide
+pour desactiver. L'ordre est volontaire&nbsp;: on ne veut pas basculer sur un
+partage de connexion quand le WiFi de l'atelier est disponible.</p>
+<label for="dssid2">Nom du réseau</label>
+<input id="dssid2" type="text" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<label for="dpass2">Mot de passe</label>
+<input id="dpass2" type="password" autocomplete="new-password"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<p class="small" id="dpass2Etat"></p>
+
+<h3 style="margin:18px 0 0 0;font-size:16px;">Depot GitHub</h3>
+<div class="row">
+<div>
+<label for="dgho">Propriétaire</label>
+<input id="dgho" type="text" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+</div>
+<div>
+<label for="dghr">Dépôt</label>
+<input id="dghr" type="text" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+</div>
+</div>
+<label for="dghb">Branche</label>
+<input id="dghb" type="text" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+
+<label for="dtok">Jeton GitHub</label>
+<input id="dtok" type="password" autocomplete="new-password"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<p class="small" id="dtokEtat"></p>
+<p class="small">Jeton fine-grained, limite au depot ci-dessus, permission
+<b>Contents: Read and write</b>. Mets-lui une date d'expiration.</p>
+
+<div class="small" style="padding:10px 12px;border-radius:8px;background:var(--note-bg);
+     border:1px solid var(--note-line);margin-top:14px;">
+<b>Les champs secrets ne sont jamais relus.</b> Le DLAP ne renvoie que
+&laquo;&nbsp;rempli&nbsp;&raquo; ou &laquo;&nbsp;vide&nbsp;&raquo;, jamais la valeur.
+Laisse un champ secret vide pour le <b>conserver tel quel</b>&nbsp;; ecris dedans
+pour le remplacer.
+</div>
+</div>
+
+<label for="mode">Mode CAN</label>
+<select id="mode" name="mode" onchange="syncBitrateToMode()">
+<option value="LINK">Link AEM 30-2206</option>
+<option value="FUELTECH">FuelTech -- trame GPS</option>
+<option value="VAG_WHEELSPEED">FuelTech -- vitesse de roue + jalons</option>
+<option value="HOLLEY">Holley Expander (injection vitesse)</option>
+<option value="ECUMASTER">ECUMaster GPStoCAN V2</option>
+</select>
+
+<div id="grp_cbr">
+<label for="cbr">Débit du bus CAN</label>
+<select id="cbr" name="cbr">
+<option value="125000">125 kbit/s</option>
+<option value="250000">250 kbit/s</option>
+<option value="500000">500 kbit/s</option>
+<option value="1000000">1 Mbit/s</option>
+</select>
+<p class="small">Doit être le même que celui de la voiture. Un mauvais débit ne dit rien :
+tu ne verras simplement aucune trame. Changer de mode remet le débit par
+défaut, tu peux le rechanger ensuite. Le mode <b>Holley Expander</b> impose
+1 Mbit/s, c'est celui du bus Dominator. Le changement prend effet tout de suite.</p>
+</div>
+
+<label for="hid">Numéro d'expander Holley — le même que côté EFI</label>
+<input id="hid" name="hid" type="number" min="0" max="2047" value="1500">
+
+<div id="grp_ecid">
+<label for="ecid">Identifiant de base ECUMaster — 1024 par défaut</label>
+<input id="ecid" name="ecid" type="number" min="0" max="2042" value="1024"
+       oninput="syncEcuRange()">
+<p class="small">Le flux occupe <b id="ecidRange">0x400 a 0x405</b>, en
+identifiants standards 11 bits et <b>big endian</b> :</p>
+<ul class="small" style="margin:4px 0 0 0;padding-left:20px;">
+<li><b id="ecidGps">0x400 a 0x404</b> — format ECUMaster GPStoCAN V2, 25 Hz :
+position, vitesse et altitude, caps, IMU, date et heure UTC.</li>
+<li><b id="ecidPerf">0x405</b> — jalons de drag, 10 Hz : <b>escalier des temps</b>
+et <b>escalier des vitesses</b> (ils montent d'une marche a chaque jalon et
+tiennent la valeur, comme les canaux Holley et FuelTech), plus la distance du
+jalon affiche et l'etat de course.
+<b>Cette trame n'existe pas chez ECUMaster</b>, elle est propre au DRAGLOG.</li>
+</ul>
+<p class="small">Ne change cette valeur que si un autre appareil occupe deja la plage.</p>
+</div>
+
+<label for="sfx">Nom Bluetooth — 5 caractères au maximum</label>
+<input id="sfx" name="sfx" type="text" maxlength="5" value="00001"
+       autocapitalize="characters" autocomplete="off" spellcheck="false"
+       style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
+<p class="small">Le module s'annonce sous <b id="unitName">DL_00001</b>.
+Lettres, chiffres, <b>-</b> et <b>_</b> uniquement. Effectif <b>au redemarrage</b> du module.</p>
+<div id="sfxErr" class="small" style="color:var(--danger);"></div>
+
+<div id="grp_scid">
+<h3 style="margin:22px 0 0 0;font-size:16px;">Declencheur de chrono par CAN</h3>
+<p class="small">Surveille un bit dans une trame que ton ECU envoie — sortie
+transbrake, contacteur, bouton de depart. Laisse l'ID a <b>0</b> pour le desactiver.
+Le seuil GPS et l'entree physique continuent de fonctionner en parallele.</p>
+
+<label for="scid">Identifiant CAN à surveiller — 0 pour couper</label>
+<input id="scid" name="scid" type="number" min="0" max="536870911" value="0"
+       oninput="syncCanTrig()">
+<div id="scidHex" class="small"></div>
+
+<label for="scext">Format de l'identifiant</label>
+<select id="scext" name="scext" onchange="syncCanTrig()">
+<option value="0">11 bits (standard)</option>
+<option value="1">29 bits (etendu)</option>
+</select>
+
+<div class="row">
+<div>
+<label for="scby">Octet (0-7)</label>
+<input id="scby" name="scby" type="number" min="0" max="7" value="0">
+</div>
+<div>
+<label for="scmk">Masque de bits</label>
+<input id="scmk" name="scmk" type="number" min="1" max="255" value="1"
+       oninput="syncCanTrig()">
+</div>
+</div>
+<div id="scmkBin" class="small"></div>
+
+<label for="sced">Front qui démarre le chrono</label>
+<select id="sced" name="sced">
+<option value="2">Descendant — le bit passe a 0</option>
+<option value="1">Montant — le bit passe a 1</option>
+<option value="0">Desactive</option>
+</select>
+<p class="small">Descendant correspond au <b>relachement</b> du transbrake, comme sur
+le Holley. Si ta sortie est de polarite inverse, prends montant. La toute premiere
+trame recue ne declenche jamais — sinon un module allume alors que la sortie est
+deja active partirait tout seul.</p>
+</div>
+
+<!-- ============================================================
+     ECRAN DIVISE DU DLdisplay
+     ============================================================
+     Le DLdisplay (carte Waveshare AMOLED ronde) partage son ecran :
+     les jalons a droite, DEUX valeurs du bus CAN en direct a gauche.
+     Ces deux valeurs se choisissent ici.
+
+     ⚠ Ce groupe ne s'affiche QUE si le firmware annonce la cle `dsp0`
+     (voir la table CAPS). Un DLPT2 ordinaire ne l'a pas et ne verra
+     jamais ce bloc — c'est la regle du projet : on decouvre par les
+     CLES, jamais par le numero de version.
+
+     ⚠ Les deux blocs identiques sont CONSTRUITS PAR JAVASCRIPT plutot
+     que recopies a la main. Deux copies d'un meme formulaire de dix
+     champs divergent toujours a la longue, et ce projet a deja paye
+     cher des copies qui divergent. -->
+<div id="grp_dsp" style="display:none;">
+<h3 style="margin:22px 0 0 0;font-size:16px;">Écran — les deux valeurs CAN</h3>
+<p class="small">Le module affiche les jalons a droite de l'ecran et ces
+deux valeurs a gauche, en direct et en gros caracteres.
+<b>Choisis simplement dans la liste</b> : les 38 mesures du flux
+<b>Generic Dash</b> d'un Link G4+ y sont, et le module se charge de savoir
+ou les lire. Pour une autre ECU, prends <b>Autre — reglage manuel</b> en bas
+de la liste.<br>
+Une valeur qui cesse d'arriver passe en gris a l'ecran — elle ne reste
+jamais figee sur un vieux nombre.</p>
+<div id="dspBlocs"></div>
+</div>
+
+<label for="pfft">Distance intermédiaire en plus</label>
+<select id="pfft" name="pfft"></select>
+<p class="small">Jalon libre en plus des 60 / 330 / 660 / 1320 pieds,
+par pas de 50 pieds. Meme calcul que les autres (temps depuis le rollout
+1 pied, vitesse trap sur 66 pieds).</p>
+
+<p class="small" style="margin-top:14px;">
+<b>Source GPS :</b> plus de reglage — depuis la v7 le module detecte seul
+s'il y a un ou deux u-blox au demarrage (GPS A sur GPIO16/17, GPS B sur
+GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
+</p>
+
+<label for="grate">Cadence GPS</label>
+<select id="grate" name="grate">
+<option value="100">10 Hz</option>
+<option value="50">20 Hz</option>
+<option value="40">25 Hz</option>
+<option value="33">30 Hz (plafond module)</option>
+<option value="0">Esclave (ecoute seule, n'impose rien)</option>
+</select>
+
+<label for="dynm">Modèle dynamique du GPS</label>
+<select id="dynm" name="dynm">
+<option value="4">Automobile</option>
+<option value="6">Airborne &lt;1g</option>
+<option value="7">Airborne &lt;2g</option>
+<option value="8">Airborne &lt;4g</option>
+</select>
+
+<label for="hecu">Modèle de Holley — d'où vient le départ</label>
+<select id="hecu" name="hecu">
+<option value="0">HP -- canal CAN 298</option>
+<option value="1">Dominator -- sortie 0 (canal 8)</option>
+</select>
+<div class="small">Les deux modeles n'annoncent pas le transbrake au meme endroit. Le module n'ecoute que la source du modele choisi ; l'autre reste journalisee mais ne demarre plus le chrono.</div>
+
+<label for="strig">Entrée de départ câblée</label>
+<select id="strig" name="strig">
+<option value="0">Desactivee</option>
+<option value="1">Front montant -- relachement d'un contact a la masse</option>
+<option value="2">Front descendant</option>
+</select>
+<div class="small">Pull-up externe obligatoire : 10k entre GPIO34 et 3V3, contact entre GPIO34 et la masse. <b>Jamais de 12 V sur cette broche.</b> Verifie la polarite au moniteur serie : le champ <code>pin=</code> doit basculer H/L quand tu actionnes le contact.</div>
+
+<label for="imuf">Filtre du capteur</label>
+<select id="imuf" name="imuf">
+<option value="0">Aucun -- brut, pour comparer</option>
+<option value="1">Leger -- accel 20.8 Hz / gyro 23.1 Hz</option>
+<option value="2">Normal -- accel 10.4 Hz / gyro 12.2 Hz</option>
+<option value="3">Fort -- accel 4.6 Hz / gyro 12.2 Hz</option>
+</select>
+<div class="small">Filtre interne du capteur, applique avant l'echantillonnage. Sans lui, les vibrations au-dessus de 12 Hz se replient et deviennent indiscernables du vrai mouvement de caisse. <b>Normal</b> convient a la plupart des voitures. <b>Aucun</b> sert a comparer un passage brut a un passage filtre sur la meme voiture. Effet immediat, sans redemarrage.</div>
+
+<label style="margin-top:16px;"><input type="checkbox" id="t50" name="t50"> Simuler 50 km/h (tous les modes de sortie)</label>
+
+<div class="row">
+<div>
+<label for="tzh">Fuseau horaire — heures</label>
+<input id="tzh" name="tzh" type="number" min="-23" max="23" value="-5">
+</div>
+<div>
+<label for="tzm">Fuseau horaire - minutes</label>
+<input id="tzm" name="tzm" type="number" min="-59" max="59" value="0">
+</div>
+</div>
+
+<label style="margin-top:16px;"><input type="checkbox" id="ltcan" name="ltcan"> Utiliser l'heure locale pour le CAN</label>
+
+<button class="btn" name="action" value="save" type="submit">Sauvegarder</button>
+<button class="btn btn3" name="action" value="save_reboot" type="submit">Sauvegarder + redemarrer</button>
+<button class="btn btn2" name="action" value="reboot" type="submit">Redemarrer</button>
+
+<div id="cfgMsg" style="margin-top:12px;"></div>
+</form>
+</div>
+
+<script>
+// =====================================================
+// BLE : memes UUIDs que le firmware DRAGLOG_v7.ino
+// =====================================================
+const SVC_UUID      = '7a1e0000-9f2b-4b8e-8f21-3d6c9a1e0000';
+const CHR_TELEMETRY = '7a1e0001-9f2b-4b8e-8f21-3d6c9a1e0000';
+const CHR_STATE     = '7a1e0002-9f2b-4b8e-8f21-3d6c9a1e0000';
+const CHR_CONFIG    = '7a1e0003-9f2b-4b8e-8f21-3d6c9a1e0000';
+const CHR_COMMAND   = '7a1e0004-9f2b-4b8e-8f21-3d6c9a1e0000';
+const CHR_DUMP      = '7a1e0005-9f2b-4b8e-8f21-3d6c9a1e0000';
+
+let bleDevice = null, bleServer = null;
+let chrTelemetry = null, chrState = null, chrConfig = null, chrCommand = null, chrDump = null;
+let stateTimer = null;
+let boardIdCache = '';
+
+const dec = new TextDecoder();
+const enc = new TextEncoder();
+
+function setStatus(txt) { document.getElementById('connStatus').textContent = txt; }
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    document.getElementById('bleUnsupported').style.display = 'block';
+    return;
+  }
+  try {
+    setStatus('Recherche...');
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SVC_UUID] }],
+      optionalServices: [SVC_UUID]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setStatus('Connexion...');
+    bleServer = await bleDevice.gatt.connect();
+    const svc = await bleServer.getPrimaryService(SVC_UUID);
+
+    // ⚠ SEULE CONFIG EST OBLIGATOIRE. Le DLAP n'expose QUE celle-la : pas de
+    // telemetrie, pas d'etat, pas de commande, pas de dump. Les reclamer
+    // toutes faisait echouer la connexion des la premiere absente.
+    var optionnelle = async function (uuid) {
+      try { return await svc.getCharacteristic(uuid); } catch (e) { return null; }
+    };
+    chrConfig    = await svc.getCharacteristic(CHR_CONFIG);   // requise
+    chrTelemetry = await optionnelle(CHR_TELEMETRY);
+    chrState     = await optionnelle(CHR_STATE);
+    chrCommand   = await optionnelle(CHR_COMMAND);
+    chrDump      = await optionnelle(CHR_DUMP);
+
+    if (chrTelemetry) {
+      await chrTelemetry.startNotifications();
+      chrTelemetry.addEventListener('characteristicvaluechanged', onTelemetry);
+    }
+    if (chrDump) {
+      await chrDump.startNotifications();
+      chrDump.addEventListener('characteristicvaluechanged', onDumpChunk);
+    }
+
+    if (chrState) { await refreshState(); stateTimer = setInterval(refreshState, 3000); }
+    await refreshConfig();
+
+    document.getElementById('btnConnect').textContent = 'Deconnecter';
+    document.getElementById('btnConnect').onclick = disconnect;
+    setStatus('Connecte a ' + (bleDevice.name || 'DRAGLOG'));
+  } catch (e) {
+    console.error(e);
+    setStatus('Echec : ' + e.message);
+  }
+}
+
+function disconnect() {
+  if (bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+}
+
+function onDisconnected() {
+  if (stateTimer) { clearInterval(stateTimer); stateTimer = null; }
+  chrTelemetry = chrState = chrConfig = chrCommand = chrDump = null;
+  if (dumpTimeoutId) { clearTimeout(dumpTimeoutId); dumpTimeoutId = null; }
+  dumpResolve = null;
+  document.getElementById('btnConnect').textContent = 'Connecter';
+  document.getElementById('btnConnect').onclick = connect;
+  setStatus('Deconnecte');
+}
+
+// L'ancienne version faisait "if (!chrCommand) return;" -- un echec
+// totalement SILENCIEUX : le bouton affichait "demande envoyee" et il ne
+// se passait rien, sans le moindre indice. On leve maintenant une erreur
+// explicite, que l'appelant affiche.
+//
+// Repli writeValue() : writeValueWithResponse() est recent, et Bluefy est
+// une implementation tierce de Web Bluetooth qui ne l'expose pas forcement.
+// Sans ce repli, un navigateur un peu ancien echoue sans explication utile.
+async function writeCommand(cmd) {
+  if (!chrCommand) {
+    throw new Error('non connecte au module (caracteristique COMMAND absente)');
+  }
+  var data = enc.encode(cmd);
+  if (typeof chrCommand.writeValueWithResponse === 'function') {
+    await chrCommand.writeValueWithResponse(data);
+  } else if (typeof chrCommand.writeValue === 'function') {
+    await chrCommand.writeValue(data);          // API plus ancienne
+  } else {
+    throw new Error('ce navigateur ne sait pas ecrire sur une caracteristique BLE');
+  }
+}
+
+// =====================================================
+// [v6.5] Archivage des runs : recuperation BLE (chrDump, par blocs) +
+// telechargement local + envoi direct sur GitHub (jeton garde dans le
+// localStorage du telephone, jamais sur l'ESP32 -- voir memoire projet
+// pour la discussion de conception).
+// =====================================================
+const GH_REPO = 'walterbturgeon/BPS_GPS';
+const GH_BRANCH = 'main';
+let dumpBuf = '', dumpResolve = null, dumpTimeoutId = null;
+let lastDumpText = '';
+
+function onDumpChunk(ev) {
+  var chunk = dec.decode(ev.target.value);
+  if (chunk === '[BLE_DUMP_END]') {
+    if (dumpTimeoutId) { clearTimeout(dumpTimeoutId); dumpTimeoutId = null; }
+    if (dumpResolve) { var r = dumpResolve; dumpResolve = null; r(dumpBuf); }
+    return;
+  }
+  dumpBuf += chunk;
+}
+
+// Demande le dump au module et attend le marqueur de fin (chunk par chunk
+// via onDumpChunk) -- delai max 20s, largement suffisant pour 8 runs pleins.
+function fetchRunsBle() {
+  return new Promise(function (resolve, reject) {
+    if (!chrDump || !chrCommand) { reject(new Error('non connecte')); return; }
+    dumpBuf = '';
+    dumpResolve = resolve;
+    dumpTimeoutId = setTimeout(function () {
+      dumpResolve = null;
+      reject(new Error('delai depasse (20s) -- reessayer'));
+    }, 20000);
+    writeCommand('dumpble').catch(function (e) {
+      if (dumpTimeoutId) { clearTimeout(dumpTimeoutId); dumpTimeoutId = null; }
+      dumpResolve = null;
+      reject(e);
+    });
+  });
+}
+
+// =====================================================
+// HISTORIQUE DU DLAP
+// =====================================================
+// Le DLAP sert son historique par la MEME caracteristique et la MEME
+// commande que le DLPT sert ses runs. On reutilise donc fetchRunsBle() tel
+// quel : seul le format du texte recu differe.
+//
+// Une ligne par passage, separee par des virgules :
+//   H,seq,date,heure,unit,statut,t60,t330,v330,t660,v660,t1320,v1320
+// Les temps sont en millisecondes, les vitesses en km/h x100.
+
+function msVersS(ms) {
+  var n = parseInt(ms, 10);
+  if (!n) return '--';                       // 0 = jalon jamais atteint
+  return (n / 1000).toFixed(3);
+}
+function vitesse(x100) {
+  var n = parseInt(x100, 10);
+  if (!n) return '--';
+  return (n / 100).toFixed(1);
+}
+
+function parseHistorique(texte) {
+  var out = [];
+  var lignes = texte.split('\n');
+  for (var i = 0; i < lignes.length; i++) {
+    var l = lignes[i].trim();
+    if (l.indexOf('H,') !== 0) continue;
+    var c = l.split(',');
+    if (c.length < 13) continue;             // ligne tronquee : on la saute
+    out.push({
+      seq: c[1], date: c[2], heure: c[3], unit: c[4], statut: c[5],
+      t60: c[6], t330: c[7], v330: c[8], t660: c[9], v660: c[10],
+      t1320: c[11], v1320: c[12],
+      // [DLAP-2.1] colonne ajoutee. Un DLAP plus ancien ne l'envoie pas :
+      // on suppose alors depose, faute de quoi tout s'afficherait en attente.
+      depose: (c.length > 13 ? c[13] : '1')
+    });
+  }
+  return out;
+}
+
+function rendreHistorique(runs) {
+  var d = document.getElementById('histTable');
+  if (!runs.length) { d.innerHTML = "<p class='small'>Aucun passage archivé pour l'instant.</p>"; return; }
+
+  // Le plus recent en haut : c'est celui qu'on vient de rouler.
+  runs = runs.slice().reverse();
+
+  var h = "<table style='width:100%;border-collapse:collapse;font-size:14px;'>";
+  h += "<thead><tr>" +
+       "<th style='text-align:left;padding:6px 8px 6px 0;border-bottom:2px solid var(--ink);'>Voiture</th>" +
+       "<th style='text-align:left;padding:6px 8px 6px 0;border-bottom:2px solid var(--ink);'>Quand</th>" +
+       "<th style='text-align:right;padding:6px 8px;border-bottom:2px solid var(--ink);'>60 pi</th>" +
+       "<th style='text-align:right;padding:6px 8px;border-bottom:2px solid var(--ink);'>1/8 mi</th>" +
+       "<th style='text-align:right;padding:6px 8px;border-bottom:2px solid var(--ink);'>1/4 mi</th>" +
+       "<th style='text-align:right;padding:6px 0 6px 8px;border-bottom:2px solid var(--ink);'>Trap</th>" +
+       "</tr></thead><tbody>";
+
+  for (var i = 0; i < runs.length; i++) {
+    var r = runs[i];
+    var abandon = (r.statut !== 'TERMINE');
+    var cell = "padding:7px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;";
+    h += "<tr" + (abandon ? " style='opacity:.62'" : "") + ">";
+    // Un passage reçu mais pas encore déposé se voit d'un coup d'œil. En
+    // piste il n'y a souvent aucun réseau : sans cette marque, on croirait
+    // tout archivé alors que rien n'est parti.
+    var attente = (r.depose === '0');
+    h += "<td style='" + cell + "padding-left:0;'><b>" + (r.unit || '?') + "</b>" +
+         (attente ? "<br><span class='small' style='color:var(--g);'>&#9679; pas encore envoyé</span>" : "") +
+         "</td>";
+    // Le DLAP ne connaît la date que s'il a vu le réseau : il ne s'y connecte
+    // que pour déposer. Sans heure NTP il écrit 2000-00-00, et afficher ça
+    // ferait douter de tout le reste de la ligne, qui est pourtant juste.
+    var dateOk = r.date && r.date.indexOf('-00-00') < 0 && r.date.indexOf('2000-') !== 0;
+    h += "<td style='" + cell + "'>" + r.heure +
+         (dateOk ? "<span class='small'> " + r.date + "</span>" : "") +
+         (abandon ? "<br><span class='small'>abandon</span>" : "") + "</td>";
+    h += "<td style='" + cell + "text-align:right;'>" + msVersS(r.t60) + "</td>";
+    h += "<td style='" + cell + "text-align:right;'>" + msVersS(r.t660) + "</td>";
+    h += "<td style='" + cell + "text-align:right;'><b>" + msVersS(r.t1320) + "</b></td>";
+    // L'unite ne s'affiche que s'il y a un nombre devant. « -- km/h » se lit
+    // comme une vitesse manquante ; « -- » se lit comme un jalon non atteint,
+    // ce qui est la verite.
+    var v = vitesse(r.v1320);
+    h += "<td style='" + cell + "text-align:right;padding-right:0;'>" + v +
+         (v === '--' ? "" : "<span class='small'> km/h</span>") + "</td>";
+    h += "</tr>";
+  }
+  h += "</tbody></table>";
+  d.innerHTML = h;
+}
+
+async function chargerHistorique() {
+  var st = document.getElementById('histStatus');
+  var b  = document.getElementById('btnHist');
+  // ⚠ Verifier la connexion AVANT d'annoncer quoi que ce soit : dire
+  // "lecture en cours" sans etre connecte fait chercher une panne du module.
+  if (!chrDump || !chrCommand) {
+    st.textContent = 'Pas connecté au DLAP.';
+    return;
+  }
+  b.disabled = true;
+  st.textContent = 'Lecture en cours...';
+  try {
+    var txt = await fetchRunsBle();
+    var runs = parseHistorique(txt);
+    rendreHistorique(runs);
+    st.textContent = runs.length + (runs.length > 1 ? ' passages.' : ' passage.');
+  } catch (e) {
+    st.textContent = 'Échec : ' + e.message;
+  } finally {
+    b.disabled = false;
+  }
+}
+
+// Un copier-coller depuis un courriel sur telephone ramene tres souvent des
+// caracteres parasites : espace ou retour de ligne en fin de selection,
+// guillemets si le client mail a "embelli" le texte, espaces insecables.
+// Sans nettoyage, GitHub renvoie 401, la page efface le jeton, et on tourne
+// en rond sans savoir pourquoi.
+function nettoieJeton(t) {
+  if (!t) return '';
+  return String(t)
+    .replace(/[ ​-‍﻿]/g, '')  // insecables, zero-width
+    .replace(/\s+/g, '')                          // espaces, tabs, retours ligne
+    .replace(/^["'<]+|[">']+$/g, '');              // guillemets, chevrons de mail
+}
+
+function getGhToken() { return localStorage.getItem('ghToken') || ''; }
+function resetGhToken() {
+  localStorage.removeItem('ghToken');
+  document.getElementById('dumpStatus').textContent = 'Jeton effacé. Il te sera redemandé au prochain envoi.';
+  showGhTokenState();
+}
+
+// Etat du jeton, sans jamais le reafficher en clair : seulement les 4
+// derniers caracteres, de quoi verifier qu'on a bien le bon.
+function showGhTokenState() {
+  var el = document.getElementById('ghTokState');
+  if (!el) return;
+  var t = getGhToken();
+  if (!t) {
+    el.textContent = 'Aucun jeton gardé sur cet appareil.';
+    el.style.color = 'var(--ink2)';
+    return;
+  }
+  var tail = t.length > 4 ? t.slice(-4) : '****';
+  el.textContent = (ghTokenJustLoaded ? 'Jeton importe par QR ' : 'Jeton enregistre ')
+                 + '(termine par ...' + tail + ').';
+  el.style.color = ghTokenJustLoaded ? 'var(--accent)' : 'var(--ink2)';
+}
+
+// [v7.2] Jeton par QR code.
+//
+// Le QR encode l'URL de la page suivie de "#tok=<PAT>". On lit le FRAGMENT
+// et pas un parametre "?tok=" : ce qui suit le # n'est jamais transmis au
+// serveur, donc le jeton ne part pas chez GitHub Pages au chargement.
+//
+// Le fragment est efface de la barre d'adresse ET de l'entree d'historique
+// des qu'il est lu (history.replaceState) : sans ca le jeton resterait
+// visible dans l'historique du navigateur et dans un partage d'URL.
+//
+// Aucune API camera n'est utilisee : c'est l'app Camera du telephone qui
+// scanne et ouvre l'URL. BarcodeDetector n'existe pas sous WebKit (donc
+// pas dans Bluefy), une lecture camera integree ne marcherait pas la ou on
+// en a justement besoin.
+// Declare AVANT l'IIFE : sinon le "var ... = false" s'executerait apres et
+// ecraserait le true pose a l'interieur (hoisting de var).
+var ghTokenJustLoaded = false;
+
+function readTokenFromHash() {
+  try {
+    var h = location.hash || '';
+    var m = h.match(/[#&]tok=([^&]+)/);
+    if (!m) return;
+    var tok = nettoieJeton(decodeURIComponent(m[1]));
+
+    // On efface le fragment AVANT toute autre chose : meme si le stockage
+    // echoue ensuite, le jeton ne doit pas rester dans l'URL.
+    var clean = location.pathname + location.search;
+    if (history && history.replaceState) history.replaceState(null, '', clean);
+    else location.hash = '';
+
+    if (!tok) return;
+    localStorage.setItem('ghToken', tok);
+    ghTokenJustLoaded = true;
+  } catch (e) { /* localStorage indisponible : on ignore silencieusement */ }
+}
+readTokenFromHash();   // au chargement, avant tout affichage
+
+// Ne garde que ce qui est sur dans un segment de chemin GitHub.
+function segmentSain(s) {
+  return (s || '').replace(/[^A-Za-z0-9_-]/g, '');
+}
+
+// Decoupe le dump BLE en runs INDEPENDANTS.
+// Le module renvoie toujours TOUT ce qu'il a en flash, en un seul bloc. Un
+// fichier unique obligeait a rouvrir et decouper a la main pour analyser un
+// passage, et melangeait des passages pris a des heures differentes.
+// Chaque run repart donc avec la ligne d'en-tete du dump (board=, fw=) :
+// sans elle le fichier ne dirait plus de quelle carte il vient.
+function decoupeDump(texte) {
+  var lignes = texte.split('\n');
+  var entete = '';
+  var runs = [];
+  var cur = null;
+  for (var i = 0; i < lignes.length; i++) {
+    var l = lignes[i];
+    if (l.indexOf('[dump] === board=') === 0) { entete = l.trim(); continue; }
+    if (l.indexOf('[dump] === fin') === 0) { cur = null; continue; }
+    if (l.indexOf('[dump] RUN #') === 0) {
+      var mh = l.match(/heure=(\d\d):(\d\d):(\d\d)/);
+      var ms = l.match(/statut=(\w+)/);
+      cur = {
+        heure: mh ? (mh[1] + '-' + mh[2] + '-' + mh[3]) : '00-00-00',
+        statut: ms ? ms[1] : 'INCONNU',
+        lignes: [l.trim()]
+      };
+      runs.push(cur);
+      continue;
+    }
+    if (cur) cur.lignes.push(l.replace(/\r$/, ''));
+  }
+  for (var j = 0; j < runs.length; j++) {
+    runs[j].texte = entete + '\n' + runs[j].lignes.join('\n') + '\n';
+  }
+  return { entete: entete, runs: runs };
+}
+
+// Hachage court du contenu. Sert UNIQUEMENT au cas ou l'heure du run est
+// 00-00-00 (aucun fix GPS au declenchement) : sans lui, deux runs sans heure
+// porteraient le meme nom et le second serait pris pour un doublon.
+function hachCourt(s) {
+  var h = 5381;
+  for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return ('00000000' + h.toString(16)).slice(-8);
+}
+
+// API Contents GitHub : PUT cree un fichier. Le jeton (PAT avec droits
+// Contents sur le repo) est demande une fois puis garde en localStorage sur
+// CE telephone -- jamais transmis a l'ESP32.
+function demandeJeton() {
+  var token = getGhToken();
+  if (!token) {
+    token = prompt('Jeton GitHub (Personal Access Token, droits Contents sur ' + GH_REPO + ') :');
+    if (!token) throw new Error('jeton requis');
+    token = nettoieJeton(token);
+    if (!token) throw new Error('jeton vide apres nettoyage');
+    localStorage.setItem('ghToken', token);
+  }
+  return token;
+}
+
+// Envoie UN run. Rend 'cree' ou 'existe'.
+//
+// Le nom vient de l'heure de DEPART DU RUN, pas de l'heure d'envoi : c'est
+// la seule cle stable. Le module renvoie tout son contenu a chaque dump,
+// donc renvoyer deux fois retomberait sinon sur des doublons. Avec cette
+// cle, un run deja archive produit un 422 que l'on traite comme "deja la"
+// -- l'envoi devient repetable sans rien salir.
+async function envoieRun(token, dossier, run) {
+  var nom = run.heure + '_' + run.statut;
+  if (run.heure === '00-00-00') nom += '_' + hachCourt(run.texte);
+  var path = dossier + '/' + nom + '.txt';
+  var b64 = btoa(unescape(encodeURIComponent(run.texte)));
+
+  var res = await fetch('https://api.github.com/repos/' + GH_REPO + '/contents/' + path, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'token ' + token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ message: 'run ' + run.heure + ' (' + run.statut + ')', content: b64, branch: GH_BRANCH })
+  });
+  if (res.ok) return 'cree';
+
+  // 422 = le fichier existe deja et on ne fournit pas son sha. On n'ECRASE
+  // jamais : des donnees de passage ont trop de valeur.
+  if (res.status === 422) return 'existe';
+
+  var err = await res.text();
+  if (res.status === 401) {
+    localStorage.removeItem('ghToken');
+    throw new Error('401 : jeton invalide ou expire. Il a ete efface, on vous le redemandera.');
+  }
+  if (res.status === 403) throw new Error('403 : jeton sans droit d ecriture (il faut Contents: Read and write).');
+  if (res.status === 404) throw new Error('404 : depot ' + GH_REPO + ' introuvable, ou jeton sans acces a ce depot.');
+  if (res.status === 409) throw new Error('409 : conflit de branche (' + GH_BRANCH + ' existe-t-elle ?).');
+  throw new Error('GitHub ' + res.status + ' : ' + err);
+}
+
+// Un seul bouton : recupere les runs via BLE puis les envoie sur GitHub,
+// un fichier par passage.
+async function fetchAndSendToGithub() {
+  var st = document.getElementById('dumpStatus');
+  var btn = document.getElementById('btnGhRuns');
+  btn.disabled = true;
+  st.textContent = 'Lecture en cours, quelques secondes...';
+  try {
+    lastDumpText = await fetchRunsBle();
+    var d = decoupeDump(lastDumpText);
+    if (!d.runs.length) { st.textContent = 'Aucun passage dans le module.'; return; }
+
+    var mb = lastDumpText.match(/board=([0-9A-Fa-f]+)/);
+    var board = mb ? mb[1] : 'unknown';
+    // Le dossier porte l'identifiant grave ET le nom BLE : le premier ne
+    // bouge jamais, le second dit d'un coup d'oeil de quelle voiture il
+    // s'agit. Renommer l'unite cree un nouveau dossier voisin, jamais un
+    // melange -- le prefixe board les garde cote a cote.
+    var nomBle = segmentSain(bleDevice && bleDevice.name);
+    var dossierUnite = board + (nomBle ? '_' + nomBle : '');
+
+    var dt = new Date();
+    var pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    var dossier = 'runs/' + dossierUnite
+      + '/' + dt.getFullYear() + '/' + pad2(dt.getMonth() + 1) + '/' + pad2(dt.getDate());
+
+    var cree = 0, deja = 0;
+    for (var i = 0; i < d.runs.length; i++) {
+      st.textContent = 'Envoi ' + (i + 1) + '/' + d.runs.length + '...';
+      var r = await envoieRun(demandeJeton(), dossier, d.runs[i]);
+      if (r === 'cree') cree++; else deja++;
+    }
+    st.textContent = cree + ' passage(s) archive(s), ' + deja + ' deja present(s) -- '
+      + GH_REPO + '/' + dossier;
+  } catch (e) {
+    st.textContent = 'Echec : ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function startOta() {
+  var msg = document.getElementById('otaMsg');
+  if (!chrCommand) {
+    msg.innerHTML = "<div class='err'>Non connecte au module BLE.</div>";
+    return;
+  }
+  try {
+    await writeCommand('ota');
+    msg.innerHTML = "<div class='ok'>Mode mise a jour active. Le BLE va se couper.<br>" +
+      "1. Allez dans les reglages WiFi du telephone/ordi, connectez-vous a <b>" + "BPS-GPS-OTA" + "</b>.<br>" +
+      "2. Ouvrez <b>http://192.168.4.1/update</b> dans un navigateur.<br>" +
+      "3. Selectionnez le fichier .bin compile et televersez.</div>";
+  } catch (e) {
+    msg.innerHTML = "<div class='err'>Echec : " + e.message + "</div>";
+  }
+}
+
+// =====================================================
+// Telemetrie (notify ~5Hz) -- vitesse + graphique + perf
+// =====================================================
+var win = 10000, buf = [], nowSrv = 0;
+var ofs = 0;
+var gfilt = 200;
+// [v6.5] gel du graphique sur un run : des qu'une course demarre (RUNNING),
+// la fenetre s'ancre au depart au lieu de continuer a glisser avec l'heure
+// reelle -- le passage reste visible en entier meme apres la fin du run,
+// jusqu'a ce qu'on clique "Reprendre en direct" (ou qu'un nouveau run demarre).
+var frozen = false, freezeT0 = 0, lastPerfState = null;
+
+(function () {
+  var s = document.getElementById('ofs'), h = '<option value="0">aucun</option>';
+  for (var v = 1; v <= 20; v++) { var x = (v / 10).toFixed(1); h += '<option value="' + x + '">-' + x + ' s</option>'; }
+  s.innerHTML = h;
+})();
+
+(function () {
+  var s = document.getElementById('gf'), h = '', opts = [50, 100, 150, 200, 250, 300, 400, 500, 750, 1000];
+  for (var i = 0; i < opts.length; i++) h += '<option value="' + opts[i] + '">' + opts[i] + ' ms</option>';
+  s.innerHTML = h;
+})();
+
+function syncSel() {
+  var s = document.getElementById('ofs'), w = (ofs < 0.05) ? '0' : ofs.toFixed(1);
+  if (s.value != w) s.value = w;
+}
+
+function syncGSel() {
+  var s = document.getElementById('gf');
+  if (s.value != String(gfilt)) s.value = gfilt;
+}
+
+async function setOfs() {
+  ofs = parseFloat(document.getElementById('ofs').value);
+  await writeCommand('rollout:' + Math.round(ofs * 1000));
+}
+
+async function setGFilter() {
+  gfilt = parseInt(document.getElementById('gf').value, 10);
+  await writeCommand('gfilter:' + gfilt);
+}
+
+// Quitte le mode gele et revient a la fenetre glissante normale.
+function resumeLive() {
+  frozen = false;
+  document.getElementById('wLive').style.display = 'none';
+  draw();
+}
+
+function fmtT(ms) { return ms == null ? '--' : (ms / 1000 - ofs).toFixed(2) + ' s'; }
+function fmtV(v) { return v == null ? '' : (' @ ' + (v / 100 / 1.609344).toFixed(1) + ' mph'); }
+function fmtVRaw(v) { return v == null ? '' : (' (brut ' + (v / 100 / 1.609344).toFixed(1) + ')'); }
+function fmtE(e) { return e == null ? '' : (' | ecart pos ' + (e > 0 ? '+' : '') + e.toFixed(1) + ' ft'); }
+function perfLabel(st, el) {
+  if (st == 'ARMED') return 'Arme -- lancez !';
+  if (st == 'RUNNING') return 'En course... ' + (el / 1000).toFixed(1) + ' s';
+  if (st == 'DONE') return 'Termine';
+  if (st == 'TIMEOUT') return 'Abandon (20 s)';
+  return 'En attente du reset';
+}
+
+async function perfReset() { await writeCommand('reset'); }
+async function perfSim() { await writeCommand('sim'); }
+
+function onTelemetry(ev) {
+  var j;
+  try { j = JSON.parse(dec.decode(ev.target.value)); } catch (e) { return; }
+
+  if (j.now < nowSrv) { buf = []; }
+  nowSrv = j.now;
+  buf.push([j.now, j.v, j.g]);
+  while (buf.length && buf[0][0] < nowSrv - 31000) buf.shift();
+
+  document.getElementById('spd').textContent = (j.v / 100).toFixed(1);
+  document.getElementById('gval').textContent = (j.g >= 0 ? '+' : '') + j.g.toFixed(2);
+  document.getElementById('meta').textContent = (j.valid ? 'fix OK' : 'pas de fix') + ' | ' + j.sats + ' sats | ' + j.hz + ' Hz';
+  if (j.gfilt != null && j.gfilt != gfilt) { gfilt = j.gfilt; syncGSel(); }
+
+  // [v7] G de l'IMU affiche A COTE de celui derive du GPS, jamais fusionne :
+  // les deux doivent pouvoir etre compares a l'oeil sur des passages reels
+  // avant qu'on envisage quoi que ce soit de commun.
+  var gi = document.getElementById('gimu');
+  var il = document.getElementById('imuLine');
+  if (j.imu) {
+    gi.textContent = (j.iax >= 0 ? '+' : '') + j.iax.toFixed(2);
+    il.style.display = 'block';
+    il.textContent = 'IMU : lat ' + (j.iay >= 0 ? '+' : '') + j.iay.toFixed(2)
+                   + ' G | vert ' + (j.iaz >= 0 ? '+' : '') + j.iaz.toFixed(2)
+                   + ' G | tangage ' + (j.igy >= 0 ? '+' : '') + j.igy.toFixed(1) + ' deg/s'
+                   + ' | ' + j.ihz + ' Hz'
+                   + (j.cal ? ' | calibre' : ' | NON calibre');
+  } else {
+    gi.textContent = '--';
+    il.style.display = 'none';
+  }
+
+  updateCalCard(j);
+
+  var p = j.perf;
+  // gel automatique du graphique des qu'un run demarre -- reste visible en
+  // entier meme apres la fin, jusqu'au clic sur "Reprendre en direct"
+  if (p.st === 'RUNNING' && lastPerfState !== 'RUNNING') {
+    frozen = true;
+    freezeT0 = j.now - 500;
+    document.getElementById('wLive').style.display = 'inline-block';
+  }
+  lastPerfState = p.st;
+  draw();
+
+  if (p.roll != null) { var rr = p.roll / 1000; if (Math.abs(rr - ofs) > 0.001) { ofs = rr; syncSel(); } }
+  document.getElementById('perfSt').textContent = (p.sim ? 'SIM — ' : '') + perfLabel(p.st, p.el);
+
+  // [v7.7] Temoin transbrake. Le module n'envoie "tb"/"tbs" qu'en mode
+  // Holley : hors de ce mode la carte reste masquee plutot que d'afficher
+  // un temoin qui ne voudrait rien dire.
+  var tbCard = document.getElementById('tbCard');
+  if (p.tb == null) {
+    tbCard.style.display = 'none';
+  } else {
+    tbCard.style.display = 'flex';
+    var led = document.getElementById('tbLed');
+    var txt = document.getElementById('tbTxt');
+    var hint = document.getElementById('tbHint');
+    if (!p.tbs) {
+      // Aucune sortie vue depuis le demarrage : on ne sait pas encore si
+      // l'ECU en pilote une. Le dire, plutot que d'afficher "relache" --
+      // ce qui laisserait croire que tout est branche et fonctionnel.
+      led.style.background = 'var(--btn-off)';
+      txt.textContent = 'Transbrake — en attente';
+      txt.style.color = 'var(--ink2)';
+      hint.textContent = 'rien reçu de l ECU';
+      tbCard.style.background = 'var(--chip)';
+    } else if (p.tb) {
+      led.style.background = 'var(--danger)';
+      txt.textContent = 'TRANSBRAKE ENGAGE';
+      txt.style.color = 'var(--err-ink)';
+      hint.textContent = 'le chrono part au relâchement';
+      tbCard.style.background = 'var(--err-bg)';
+    } else {
+      led.style.background = 'var(--accent)';
+      txt.textContent = 'Transbrake relâché';
+      txt.style.color = 'var(--ok-ink)';
+      hint.textContent = 'pret';
+      tbCard.style.background = 'var(--ok-bg)';
+    }
+  }
+
+  // [v7.2] jalon partiel : la ligne n'apparait que s'il est active
+  var showPart = (p.pft > 0);
+  document.getElementById('pPartLbl').style.display = showPart ? '' : 'none';
+  document.getElementById('pPartVal').style.display = showPart ? '' : 'none';
+  if (showPart) {
+    document.getElementById('pPartLbl').textContent = p.pft + ' pieds';
+    document.getElementById('pPart').textContent = fmtT(p.tp) + fmtV(p.vp);
+  }
+
+  // [v7.3.01] Vitesse brute et ecart de position retires de l'affichage
+  // direct : une notification BLE ne peut pas depasser MTU-3 octets, et
+  // ces champs faisaient repasser la limite des que les 4 jalons etaient
+  // atteints -- l'affichage se figeait pile avant le 1320. Ils restent
+  // dans le journal serie et dans le dump archive sur GitHub.
+  document.getElementById('p60').textContent = fmtT(p.t60);
+  document.getElementById('p330').textContent = fmtT(p.t330) + fmtV(p.v330);
+  document.getElementById('p660').textContent = fmtT(p.t660) + fmtV(p.v660);
+  document.getElementById('p1320').textContent = fmtT(p.t1320) + fmtV(p.v1320);
+}
+
+// ---- Menus generes (numero d unite / distance partielle) -------------
+// Le nom BLE fait exactement 8 caracteres ("DL_00001") : c'est la limite
+// du budget d'annonce, l'UUID de service occupant le reste. Ne pas
+// elargir la plage au dela de 10 sans revoir le format cote firmware.
+(function () {
+  document.getElementById('sfx').addEventListener('input', syncUnitName);
+
+  var p = document.getElementById('pfft');
+  var off = document.createElement('option');
+  off.value = '0'; off.textContent = 'aucune';
+  p.appendChild(off);
+  for (var d = 50; d <= 1300; d += 50) {
+    var o2 = document.createElement('option');
+    o2.value = String(d);
+    o2.textContent = d + ' pieds';
+    p.appendChild(o2);
+  }
+})();
+
+// Meme jeu de caracteres que le firmware ([A-Za-z0-9_-], 1 a 5). On
+// SIGNALE les caracteres refuses au lieu de les retirer en douce : sinon
+// l'utilisateur tape "MA VOIT" et decouvre "DL_MAVOI" sans comprendre.
+function syncUnitName() {
+  var raw = document.getElementById('sfx').value;
+  var filtre = raw.replace(/[^A-Za-z0-9_-]/g, '');   // caracteres retires
+  var ok = filtre.slice(0, 5);                        // puis longueur
+  var err = document.getElementById('sfxErr');
+  document.getElementById('unitName').textContent = 'DL_' + (ok || '?????');
+
+  // Deux causes distinctes, deux messages distincts : dire "caracteres
+  // refuses" a quelqu'un qui a juste tape trop long l'enverrait chercher
+  // au mauvais endroit.
+  if (raw.length === 0)          err.textContent = 'Il faut au moins un caractère.';
+  else if (filtre !== raw)       err.textContent = 'Lettres, chiffres, - et _ seulement.';
+  else if (filtre.length > 5)    err.textContent = '5 caractères au maximum : le nom tient dans DL_ plus cinq.';
+  else                           err.textContent = '';
+  return ok;
+}
+
+// ---- Calibration IMU -------------------------------------------------
+// Le firmware fait tout le travail ; la page ne fait qu'envoyer "calib"
+// et refleter l'etat qu'il renvoie dans la telemetrie (~5 Hz). Il est
+// important d'afficher AUSSI les refus : un refus silencieux ferait
+// croire a une calibration reussie, ce qui est pire que pas de
+// calibration du tout.
+var CAL_IDLE = 0, CAL_RUNNING = 1, CAL_OK = 2, CAL_REFUSED = 3;
+
+// Dernier etat de calibration recu du module, et QUAND il a change. Sert a
+// detecter qu'une commande est partie sans que le module reagisse.
+var dernierCalSt = null;
+var dernierCalStAt = 0;
+
+function updateCalCard(j) {
+  var g = document.getElementById('calGrid');
+  var st = document.getElementById('calState');
+  var msg = document.getElementById('calMsg');
+  var btn = document.getElementById('btnCal');
+  if (!g || !st) return;
+
+  if (!j.imu) {
+    st.textContent = 'IMU absent';
+    g.innerHTML = "<div class='small'>Etat</div><div><b id='calState'>IMU absent</b></div>";
+    btn.disabled = true;
+    msg.textContent = 'Aucun capteur trouvé au démarrage du module.';
+    return;
+  }
+  if (j.calSt !== dernierCalSt) { dernierCalSt = j.calSt; dernierCalStAt = Date.now(); }
+  btn.disabled = (j.calSt === CAL_RUNNING);
+
+  var rows = [];
+  if (j.calSt === CAL_RUNNING) {
+    rows.push(['Etat', 'capture en cours...']);
+  } else if (j.cal) {
+    rows.push(['Etat', 'calibre']);
+    if (j.calTilt != null) rows.push(['Inclinaison du montage', j.calTilt.toFixed(1) + ' deg']);
+    if (j.calGz != null)   rows.push(['Biais gyro Z', (j.calGz >= 0 ? '+' : '') + j.calGz.toFixed(2) + ' deg/s']);
+    if (j.calScl != null)  rows.push(['Correction d echelle', j.calScl.toFixed(4)]);
+    if (j.calT != null && j.itemp != null) {
+      var d = j.itemp - j.calT;
+      rows.push(['Temperature', j.itemp.toFixed(1) + ' C (calibre a ' + j.calT.toFixed(1) +
+                 ', ecart ' + (d >= 0 ? '+' : '') + d.toFixed(1) + ')']);
+    }
+    // [v7.2] Lacet : appris en roulant, pas au repos. yawN dit ou en est
+    // la convergence -- une valeur affichee avec 0 evenement ne veut rien
+    // dire, il faut le montrer clairement plutot que d'afficher 0.0 deg.
+    if (j.yaw != null) {
+      var yn = j.yawN || 0;
+      var etat = (yn === 0) ? 'pas encore appris'
+               : (yn < 25)  ? 'en cours (' + yn + ' evenements)'
+               : 'converge (' + yn + ' evenements)';
+      rows.push(['Alignement lacet', (j.yaw >= 0 ? '+' : '') + j.yaw.toFixed(1) + ' deg — ' + etat]);
+    }
+  } else {
+    rows.push(['Etat', 'NON calibre -- valeurs brutes']);
+  }
+
+  var html = '';
+  rows.forEach(function (r, i) {
+    var id = (i === 0) ? " id='calState'" : '';
+    html += "<div class='small'>" + r[0] + "</div><div><b" + id + ">" + r[1] + "</b></div>";
+  });
+  g.innerHTML = html;
+
+  // [v7.2.09] Le module envoie un CODE, plus le texte : une notification BLE
+  // est plafonnee a MTU-3 octets, et le message en clair coutait ~45 octets
+  // par trame. Le depassement de cette limite ne tronque pas la trame, il
+  // l'empeche totalement de partir -- c'est ce qui figeait la page.
+  var CAL_ERRS = {
+    0: '',
+    1: 'IMU muet : trop peu d echantillons.',
+    2: 'Vehicule en mouvement : la gravite mesuree n est pas coherente.',
+    3: 'Trop de vibrations : moteur au ralenti ?',
+    4: 'Le module bouge ou est manipule.',
+    5: 'Rotation reelle detectee, ce n est pas un biais.',
+    6: 'IMU absent.'
+  };
+  if (j.calSt === CAL_REFUSED) {
+    msg.textContent = 'Refuse : ' + (CAL_ERRS[j.calErr] || 'raison inconnue (' + j.calErr + ')');
+    msg.style.color = 'var(--danger)';
+  } else if (j.calSt === CAL_RUNNING) {
+    msg.textContent = 'Capture en cours, ne touche à rien...';
+    msg.style.color = 'var(--ink2)';
+  } else if (j.calSt === CAL_OK) {
+    msg.textContent = 'Calibration enregistrée.';
+    msg.style.color = 'var(--accent)';
+  }
+}
+
+async function doCalib() {
+  var msg = document.getElementById('calMsg');
+
+  // Verifier la connexion AVANT d'annoncer quoi que ce soit : dire
+  // "demande envoyee" alors qu'on n'est pas connecte est exactement ce qui
+  // faisait croire a une panne du module.
+  if (!chrCommand) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Pas connecté. Touche « Connecter » en haut de la page, puis réessaie.';
+    return;
+  }
+
+  msg.style.color = 'var(--ink2)';
+  msg.textContent = 'C est parti, ne touche à rien pendant 3 secondes...';
+  try {
+    await writeCommand('calib');
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Echec d envoi : ' + (e && e.message ? e.message : e);
+    return;
+  }
+
+  // Le module doit repondre dans la telemetrie (~5 Hz) : calSt passe a
+  // RUNNING puis OK/REFUSED. Si rien ne bouge en 6 s, c'est que la commande
+  // est partie mais n'a pas ete traitee -- le dire plutot que de laisser
+  // l'utilisateur devant un message fige.
+  var avant = Date.now();
+  setTimeout(function () {
+    if (dernierCalSt === CAL_RUNNING || dernierCalStAt > avant) return;  // ca a bouge
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Commande envoyee mais le module n a pas repondu. '
+                    + 'Verifiez que la telemetrie se met a jour (vitesse, G) en haut de la page.';
+  }, 6000);
+}
+
+function setWin(s) {
+  win = s * 1000;
+  resumeLive();   // choisir une fenetre = reprendre la main sur l'affichage
+  ['w5', 'w10', 'w30'].forEach(function (id) {
+    var b = document.getElementById(id), on = (id == 'w' + s);
+    b.style.background = on ? 'var(--btn)' : 'var(--chip)'; b.style.color = on ? 'var(--btn-ink)' : 'var(--chip-ink)';
+  });
+  draw();
+}
+function niceMax(v) { var c = [5, 10, 20, 30, 50, 80, 100, 150, 200, 250, 300]; for (var i = 0; i < c.length; i++) { if (v <= c[i]) return c[i]; } return 300; }
+// echelle G auto-zoom : plus petite graduation "ronde" qui couvre le pic
+// (positif ou negatif) visible dans la fenetre courante, symetrique autour
+// de 0 -- se recalcule a chaque trace, contrairement a l'ancien axe fixe.
+function niceMaxG(v) { var c = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]; for (var i = 0; i < c.length; i++) { if (v <= c[i]) return c[i]; } return 10; }
+function draw() {
+  var cv = document.getElementById('cv'), x = cv.getContext('2d'), w = cv.width, h = cv.height;
+  var L = 44, B = 22, T = 8, R = 34; x.clearRect(0, 0, w, h); if (!nowSrv) return;
+  // [v6.5] fenetre gelee sur un run : ancree au depart (freezeT0), s'etend
+  // avec la course en cours jusqu'a un plafond de 22s (marge au-dessus du
+  // timeout perf 20s), puis reste fixe -- vs fenetre glissante normale.
+  var effWin = frozen ? Math.min(22000, Math.max(win, (nowSrv - freezeT0) + 2000)) : win;
+  var t0 = frozen ? freezeT0 : (nowSrv - win);
+  var vm = 5, gm = 0.3;
+  for (var i = 0; i < buf.length; i++) {
+    if (buf[i][0] < t0) continue;
+    if (buf[i][1] / 100 > vm) vm = buf[i][1] / 100;
+    if (buf[i][2] != null && Math.abs(buf[i][2]) > gm) gm = Math.abs(buf[i][2]);
+  }
+  var ym = niceMax(vm * 1.05);
+  var gScale = niceMaxG(gm * 1.1);
+  var G_MIN = -gScale, G_MAX = gScale;
+  x.strokeStyle = couleur('--grid'); x.fillStyle = couleur('--ink2'); x.font = '11px Arial'; x.textAlign = 'right'; x.lineWidth = 1;
+  for (var g = 0; g <= 5; g++) { var yy = T + (h - T - B) * g / 5; x.beginPath(); x.moveTo(L, yy); x.lineTo(w - R, yy); x.stroke(); x.fillText(Math.round(ym * (5 - g) / 5), L - 5, yy + 4); }
+  // axe G a droite (echelle auto-zoom, meme repere Y que la vitesse)
+  x.fillStyle = couleur('--g'); x.textAlign = 'left';
+  for (var g = 0; g <= 5; g++) { var yy = T + (h - T - B) * g / 5; var gv = G_MAX - (G_MAX - G_MIN) * g / 5; x.fillText(gv.toFixed(1), w - R + 6, yy + 4); }
+  x.fillStyle = couleur('--ink2'); x.textAlign = 'center';
+  for (var g = 0; g <= 5; g++) { var xx = L + (w - L - R) * g / 5; x.fillText((-effWin / 1000 * (5 - g) / 5).toFixed(0) + 's', xx, h - 6); }
+  // ligne zero G (repere visuel)
+  var zy = T + (h - T - B) * (1 - (0 - G_MIN) / (G_MAX - G_MIN));
+  x.strokeStyle = couleur('--zero'); x.lineWidth = 1; x.beginPath(); x.moveTo(L, zy); x.lineTo(w - R, zy); x.stroke();
+  // vitesse (vert)
+  x.strokeStyle = couleur('--gps'); x.lineWidth = 2; x.beginPath(); var st = false;
+  for (var i = 0; i < buf.length; i++) { var p = buf[i]; if (p[0] < t0) continue; var px = L + (p[0] - t0) / effWin * (w - L - R); var py = T + (h - T - B) * (1 - (p[1] / 100) / ym); if (!st) { x.moveTo(px, py); st = true; } else { x.lineTo(px, py); } }
+  x.stroke();
+  // G (orange, lisse cote firmware selon config.gFilterMs, axe secondaire auto-zoom)
+  x.strokeStyle = couleur('--g'); x.lineWidth = 2; x.beginPath(); st = false;
+  for (var i = 0; i < buf.length; i++) { var p = buf[i]; if (p[0] < t0 || p[2] == null) continue; var px = L + (p[0] - t0) / effWin * (w - L - R); var py = T + (h - T - B) * (1 - (p[2] - G_MIN) / (G_MAX - G_MIN)); if (!st) { x.moveTo(px, py); st = true; } else { x.lineTo(px, py); } }
+  x.stroke();
+}
+setWin(10);
+showGhTokenState();   // etat du jeton des le chargement (import QR inclus)
+
+// =====================================================
+// Etat (lecture seule, rafraichie toutes les 3s pendant la connexion)
+// =====================================================
+async function refreshState() {
+  if (!chrState) return;
+  var j;
+  try { j = JSON.parse(dec.decode(await chrState.readValue())); } catch (e) { return; }
+
+  var rows = [];
+  rows.push(['Mode actif', j.mode]);
+  rows.push(['Bitrate CAN', j.bitrate]);
+  // [v7] Detection automatique : 0 = verdict pas encore rendu, 1 = un seul
+  // module (mode mono), 2 = deux modules. Plus de reglage manuel.
+  var det = (j.gpsDetected === 2) ? '2 modules (dual)'
+          : (j.gpsDetected === 1) ? '1 seul module (mono)'
+          : 'detection en cours...';
+  rows.push(['Modules GPS detectes', det]);
+  var fmtGps = function (u) {
+    return (u.ok ? 'OK' : 'bring-up') + ', ' + u.hz + ' Hz, ' + u.sats + ' sats, fix ' + u.fix;
+  };
+  if (j.gpsA) rows.push(['GPS A', fmtGps(j.gpsA)]);
+  if (j.gpsB) rows.push(['GPS B', fmtGps(j.gpsB)]);
+  if (j.speedDiffAB != null) rows.push(['Ecart vitesse A-B', j.speedDiffAB + ' km/h']);
+  rows.push(['Modele dynamique', j.dynModel]);
+  if (j.holleyEcu) rows.push(['ECU Holley (chrono)', j.holleyEcu]);
+  rows.push(['Constellations', j.constellations]);
+
+  if (j.imu) {
+    var it = j.imu.ok ? ('OK, ' + j.imu.hz + ' Hz'
+              + (j.imu.tempC != null ? ', ' + j.imu.tempC.toFixed(1) + ' C' : ''))
+            : 'absent';
+    rows.push(['IMU (LSM6DSOX)', it]);
+  }
+  if (j.holley) {
+    rows.push(['Holley ECU', (j.holley.alive ? 'detecte' : 'absent') + (j.holley.configured ? ', configure' : '') + ' (ID ' + j.holley.id + ')']);
+    if (j.holley.injA != null) rows.push(['Holley injection', 'A ' + j.holley.injA + ' Hz | B ' + j.holley.injB + ' Hz | moy ' + j.holley.injHz + ' Hz']);
+    else rows.push(['Holley injection', j.holley.injHz + ' Hz']);
+    rows.push(['Holley entrees (config ECU)', j.holley.slots]);
+    rows.push(['Holley canal temps', j.holley.timeChan + ' s']);
+  }
+  rows.push(['GPS valid', (j.gpsValid ? 'YES' : 'NO') + ' (fix ' + j.fixType + ', ' + j.satellites + ' sats)']);
+  rows.push(['Heure GPS UTC', j.utc]);
+  rows.push(['Heure locale', j.local]);
+  rows.push(['Vitesse GPS km/h', j.speedKmh]);
+  rows.push(['Altitude ft', j.altitudeFt]);
+  rows.push(['Simulation 50 km/h', j.sim50 ? 'ON' : 'OFF']);
+
+  var html = '';
+  rows.forEach(function (r) { html += "<div class='small'>" + r[0] + "</div><div><b>" + r[1] + "</b></div>"; });
+  document.getElementById('etatGrid').innerHTML = html;
+}
+
+// =====================================================
+// Configuration (lecture au connect, ecriture au submit)
+// =====================================================
+// [v8.1] Debit CAN. Le formulaire envoie TOUJOURS "cbr", et le firmware fait
+// gagner un "cbr" explicite sur le defaut du mode. Sans ces deux fonctions,
+// choisir un nouveau mode renverrait le debit affiche (celui de l'ancien
+// mode) et le defaut du nouveau mode ne s'appliquerait jamais.
+var CBR_DEFAUT = { LINK: 500000, FUELTECH: 1000000, VAG_WHEELSPEED: 500000,
+                   HOLLEY: 1000000, ECUMASTER: 1000000 };
+
+// Montre la plage reellement occupee par le flux ECUMaster. Le champ est un
+// nombre decimal (c'est ce que transporte le JSON) mais tout le monde parle
+// de ces identifiants en hexadecimal -- afficher les deux evite la
+// conversion mentale au moment ou on cherche une collision sur le bus.
+function syncEcuRange() {
+  var b = parseInt(document.getElementById('ecid').value, 10);
+  var t = document.getElementById('ecidRange');
+  var g = document.getElementById('ecidGps');
+  var p = document.getElementById('ecidPerf');
+  if (!t || !g || !p) return;
+  if (isNaN(b) || b < 0 || b > 2042) {
+    t.textContent = 'valeur hors plage'; g.textContent = '--'; p.textContent = '--';
+    return;
+  }
+  var hex = function (v) { return '0x' + v.toString(16).toUpperCase(); };
+  t.textContent = hex(b) + ' a ' + hex(b + 5);
+  g.textContent = hex(b) + ' a ' + hex(b + 4);
+  p.textContent = hex(b + 5);
+}
+
+// Le bus Holley Dominator est a 1 Mbit/s : ce n'est pas un choix. Le
+// firmware le force de son cote ; on grise le champ pour ne pas laisser
+// croire que la valeur choisie sera respectee.
+function lockBitrateIfHolley() {
+  var holley = (document.getElementById('mode').value === 'HOLLEY');
+  var cbr = document.getElementById('cbr');
+  if (holley) cbr.value = '1000000';
+  cbr.disabled = holley;
+}
+
+// =====================================================
+// [v8.2] COMPATIBILITE AVEC LES FIRMWARES DEJA SUR LE TERRAIN
+// =====================================================
+// Une seule page sert des modules de generations differentes. Deux faits du
+// firmware dictent la methode :
+//
+// 1. Les cles INCONNUES sont inoffensives. applyConfigJson ne lit que les
+//    cles qu'il connait ; tout le reste du JSON est ignore. On peut donc
+//    envoyer un surensemble sans rien casser.
+//
+// 2. Une VALEUR inconnue casse TOUT. Le firmware v7 fait
+//    `else return false` sur un mode qu'il ne connait pas -> la sauvegarde
+//    entiere est rejetee, pas seulement ce champ. Proposer ECUMASTER a un
+//    module v7 lui ferait perdre aussi le fuseau, le jalon partiel, etc.
+//
+// D'ou la regle : on n'affiche un reglage QUE si sa cle est revenue du
+// module, et on ne propose un mode QUE si la capacite correspondante existe.
+//
+// ⚠ ON NE SE FIE PAS AU NUMERO DE VERSION. Sur ce projet il ne prouve rien :
+// `fw=v7.9.00` a couvert TROIS builds fonctionnellement differents. Le JSON
+// CONFIG, lui, est la verite terrain -- c'est le firmware qui declare ce
+// qu'il sait faire. Une cle presente est une preuve, un numero non.
+// [22 aout 2026] Le DLAP est un APPAREIL DIFFERENT, pas une variante de
+// firmware : il ne mesure rien, il collecte. On ne masque donc pas trois
+// reglages comme pour un vieux DRAGLOG -- on bascule toute la page.
+var estDlap = false;
+
+function appliquerModeDlap(dlap) {
+  estDlap = dlap;
+
+  // Cartes : en mode DLAP on ne garde que Connexion et Configuration.
+  // Le graphique de vitesse, l'etat GPS et l'archivage n'ont aucun sens ici.
+  document.querySelectorAll('.card').forEach(function (c) {
+    var garder = (c.id === 'connCard') || !!c.querySelector('#cfgForm');
+    c.style.display = (dlap && !garder) ? 'none' : '';
+  });
+
+  // L'historique appartient au DLAP seul -- le DLPT a deja sa propre carte
+  // de passages.
+  //
+  // ⚠ NE PAS MASQUER EN SILENCE. Le 27 aout 2026, la carte disparaissait
+  // sans un mot parce que la pile Bluetooth du systeme servait une table
+  // GATT en cache, d'avant l'ajout des caracteristiques. On a cherche du
+  // cote du cache du navigateur, puis du firmware, pendant une heure.
+  // Une carte absente ne dit rien ; une carte qui explique se corrige.
+  var ch = document.getElementById('cardHist');
+  var boite = document.getElementById('histTable');
+  var btn = document.getElementById('btnHist');
+  if (ch) {
+    ch.style.display = dlap ? '' : 'none';
+    if (dlap && (!chrDump || !chrCommand)) {
+      if (btn) btn.style.display = 'none';
+      if (boite) boite.innerHTML =
+        "<div class='err'><b>Ce DLAP ne sert pas son historique.</b><br><br>" +
+        "Deux causes possibles&nbsp;:<br><br>" +
+        "<b>1. Table Bluetooth en cache.</b> Ton appareil garde la liste des " +
+        "services d'avant la mise à jour du DLAP. Oublie <b>DLAP</b> dans les " +
+        "réglages Bluetooth du système, puis reconnecte-toi et saisis le code " +
+        "d'appairage.<br><br>" +
+        "<b>2. Firmware plus ancien que la version 2.0</b>, qui n'a pas " +
+        "l'historique.<br><br>" +
+        "<span class='small'>Manque&nbsp;: " +
+        (!chrCommand ? "commandes " : "") + (!chrDump ? "flux de données" : "") +
+        "</span></div>";
+    } else if (btn) {
+      btn.style.display = '';
+    }
+  }
+
+  // ⚠ Le redemarrage passe par COMMAND, que le DLAP 2.0 expose desormais.
+  // Le bouton reste malgre tout masque ici : ce panneau ne sert qu'aux
+  // reglages reseau, et un redemarrage en pleine reception couperait un
+  // transfert de run en cours.
+
+  // Dans le formulaire : tout masquer sauf le panneau DLAP, la banniere et
+  // les boutons. Plus sur qu'une liste d'identifiants a maintenir.
+  var form = document.getElementById('cfgForm');
+  Array.prototype.forEach.call(form.children, function (el) {
+    if (el.id === 'panDlap')  { el.style.display = dlap ? '' : 'none'; return; }
+    if (el.id === 'fwBanner') return;                    // gere par les CAPS
+    if (el.id === 'cfgMsg')   return;
+    if (el.tagName === 'BUTTON') {
+      // Redemarrer passe par la caracteristique COMMAND, absente du DLAP.
+      var cmdSeule = (el.value === 'reboot' || el.value === 'save_reboot');
+      el.style.display = (dlap && cmdSeule) ? 'none' : '';
+      return;
+    }
+    el.style.display = dlap ? 'none' : '';
+  });
+}
+
+function remplirDlap(j) {
+  document.getElementById('dssid1').value = j.ssid1 || '';
+  document.getElementById('dssid2').value = j.ssid2 || '';
+  document.getElementById('dgho').value   = j.gho   || '';
+  document.getElementById('dghr').value   = j.ghr   || '';
+  document.getElementById('dghb').value   = j.ghb   || '';
+  // Les secrets ne reviennent jamais : on n'affiche que leur presence.
+  var etat = function (id, present) {
+    document.getElementById(id).textContent =
+      present ? 'Deja enregistre. Laisse vide pour le conserver.'
+              : 'Aucune valeur enregistree.';
+  };
+  etat('dpass1Etat', !!j.haspass1);
+  etat('dpass2Etat', !!j.haspass2);
+  etat('dtokEtat',   !!j.hastok);
+  ['dpass1','dpass2','dtok'].forEach(function (i) { document.getElementById(i).value = ''; });
+}
+
+// ============================================================
+// ECRAN DIVISE DU DLdisplay -- les deux valeurs CAN
+// ============================================================
+// Le firmware range chaque valeur dans UNE chaine compacte, pas dans onze
+// cles JSON separees. Raison : vingt-deux cles de plus auraient menace la
+// limite BLE, qui a deja coute des heures a ce projet quand une trame trop
+// longue cessait de partir SANS AUCUNE ERREUR.
+//
+// Forme : en,id,ext,octet,taille,format,boutiste,facteur,decalage,decimales,nom
+// Exemple : 1,1252,0,2,2,0,1,0.25,0,1,RPM
+//
+// ⚠ La logique metier vit ici, separee de tout appel navigator.bluetooth :
+// le jour du portage en appli Capacitor, seule la couche BLE change.
+var DSP_NB = 2;
+var dspDisponible = false;   // le firmware connecte annonce-t-il `dsp0` ?
+
+// ============================================================
+// LES 38 CANAUX DU FLUX « GENERIC DASH » DU LINK G4+
+// ============================================================
+// Le rang dans cette liste EST le numero de canal envoye au firmware.
+// ⚠ NE JAMAIS REORDONNER NI INSERER AU MILIEU : un reglage deja
+// enregistre dans un module pointerait alors sur une autre mesure, et
+// afficherait un nombre credible et faux. Ajouter uniquement A LA FIN.
+//
+// Structure du flux : un seul identifiant CAN, 13 sous-trames reperees
+// par l'octet 0, trois valeurs de 16 bits par sous-trame en petit
+// boutiste. Le canal N vit dans la sous-trame N/3, au slot N%3.
+// Le firmware fait le decodage ; ici on ne montre qu'un nom.
+var LINK_CANAUX = [
+  'Regime moteur — RPM',
+  'Pression admission MAP — kPa',
+  'Pression relative MGP — kPa',
+  'Pression atmospherique — kPa',
+  'Position papillon — %',
+  'Cycle injecteurs — %',
+  'Cycle injecteurs secondaires — %',
+  'Largeur impulsion injecteur — ms',
+  'Temperature eau — °C',
+  'Temperature air admis — °C',
+  'Tension batterie — V',
+  'Debit d air massique — g/s',
+  'Rapport engage',
+  'Calage injection — °',
+  'Avance allumage — °',
+  'Arbre a cames admission gauche — °',
+  'Arbre a cames admission droit — °',
+  'Arbre a cames echappement gauche — °',
+  'Arbre a cames echappement droit — °',
+  'Lambda 1',
+  'Lambda 2',
+  'Erreurs capteur de position 1',
+  'Nombre de codes defaut',
+  'Pression carburant — kPa',
+  'Temperature huile — °C',
+  'Pression huile — kPa',
+  'Vitesse roue avant gauche — km/h',
+  'Vitesse roue arriere gauche — km/h',
+  'Vitesse roue avant droite — km/h',
+  'Vitesse roue arriere droite — km/h',
+  'Cliquetis cylindre 1',
+  'Cliquetis cylindre 2',
+  'Cliquetis cylindre 3',
+  'Cliquetis cylindre 4',
+  'Cliquetis cylindre 5',
+  'Cliquetis cylindre 6',
+  'Cliquetis cylindre 7',
+  'Cliquetis cylindre 8'
+];
+
+// Identifiant par defaut du flux, tel que PCLink le propose.
+var LINK_ID_DEFAUT = 1000;
+
+// ⚠ LE CHOIX COURANT TIENT EN UN SEUL MENU DEROULANT.
+// La premiere version demandait identifiant, octet, taille, format et
+// ordre des octets pour afficher un regime moteur. C'etait exact et
+// inutilisable. Le menu couvre les 38 canaux du Link ; le reglage manuel
+// reste dessous, replie, pour les ECU qui ne sont pas des Link.
+function dspBlocHtml(i) {
+  var p = 'd' + i;
+  var zone = (i === 0) ? 'du HAUT' : 'du BAS';
+
+  var options = '<option value="-2">— Rien, laisser vide —</option>';
+  for (var k = 0; k < LINK_CANAUX.length; k++) {
+    options += '<option value="' + k + '">' + LINK_CANAUX[k] + '</option>';
+  }
+  options += '<option value="-1">Autre — reglage manuel</option>';
+
+  return ''
+  + '<div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;">'
+  + '<label for="' + p + 'canal" style="margin:0;"><b>Valeur ' + zone + ' de l\'ecran</b></label>'
+  + '<select id="' + p + 'canal" onchange="dspChangeCanal(' + i + ')"'
+  +   ' style="width:100%;padding:12px;margin-top:8px;font-size:16px;">'
+  +   options
+  + '</select>'
+  + '<div id="' + p + 'apercu" class="small" style="margin-top:8px;"></div>'
+
+  // ---- Repli : tout ce qui suit ne sert qu'au mode manuel ----
+  + '<div id="' + p + 'manuel" style="display:none;border-top:1px solid var(--line);margin-top:12px;padding-top:10px;">'
+  + '<p class="small">Pour une ECU qui n\'est pas un Link. Tu decris toi-meme'
+  + ' ou lire la valeur dans la trame.</p>'
+
+  + '<label style="display:flex;align-items:center;gap:8px;margin:0;">'
+  +   '<input id="' + p + 'en" type="checkbox" onchange="dspApercu(' + i + ')">'
+  +   '<b>Afficher cette valeur</b>'
+  + '</label>'
+
+  + '<label for="' + p + 'nom">Nom affiche (8 caracteres au maximum)</label>'
+  + '<input id="' + p + 'nom" type="text" maxlength="8" placeholder="RPM"'
+  +   ' autocomplete="off" spellcheck="false" oninput="dspApercu(' + i + ')"'
+  +   ' style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);'
+  +   'border-radius:8px;box-sizing:border-box;">'
+
+  + '<label for="' + p + 'id">Identifiant CAN</label>'
+  + '<input id="' + p + 'id" type="number" min="0" value="0" oninput="dspApercu(' + i + ')">'
+
+  + '<label for="' + p + 'ext">Format de l\'identifiant</label>'
+  + '<select id="' + p + 'ext" onchange="dspApercu(' + i + ')">'
+  +   '<option value="0">11 bits (standard)</option>'
+  +   '<option value="1">29 bits (etendu)</option>'
+  + '</select>'
+
+  + '<div class="row">'
+  +   '<div>'
+  +     '<label for="' + p + 'off">Premier octet (0-7)</label>'
+  +     '<input id="' + p + 'off" type="number" min="0" max="7" value="0" oninput="dspApercu(' + i + ')">'
+  +   '</div>'
+  +   '<div>'
+  +     '<label for="' + p + 'len">Taille</label>'
+  +     '<select id="' + p + 'len" onchange="dspApercu(' + i + ')">'
+  +       '<option value="1">1 octet</option>'
+  +       '<option value="2">2 octets</option>'
+  +       '<option value="4">4 octets</option>'
+  +     '</select>'
+  +   '</div>'
+  + '</div>'
+
+  + '<div class="row">'
+  +   '<div>'
+  +     '<label for="' + p + 'fmt">Format du nombre</label>'
+  +     '<select id="' + p + 'fmt" onchange="dspApercu(' + i + ')">'
+  +       '<option value="0">Entier non signe</option>'
+  +       '<option value="1">Entier signe</option>'
+  +       '<option value="2">Flottant 32 bits</option>'
+  +     '</select>'
+  +   '</div>'
+  +   '<div>'
+  +     '<label for="' + p + 'be">Ordre des octets</label>'
+  +     '<select id="' + p + 'be" onchange="dspApercu(' + i + ')">'
+  +       '<option value="1">Gros boutiste (poids fort en premier)</option>'
+  +       '<option value="0">Petit boutiste (poids faible en premier)</option>'
+  +     '</select>'
+  +   '</div>'
+  + '</div>'
+
+  + '<div class="row">'
+  +   '<div>'
+  +     '<label for="' + p + 'mul">Facteur</label>'
+  +     '<input id="' + p + 'mul" type="number" step="any" value="1" oninput="dspApercu(' + i + ')">'
+  +   '</div>'
+  +   '<div>'
+  +     '<label for="' + p + 'add">Decalage</label>'
+  +     '<input id="' + p + 'add" type="number" step="any" value="0" oninput="dspApercu(' + i + ')">'
+  +   '</div>'
+  + '</div>'
+  + '<p class="small">Valeur affichee = <b>brut &times; facteur + decalage</b>.'
+  + ' Exemple : un regime code par pas de 0,25 tr/min prend un facteur 0,25.</p>'
+
+  + '<label for="' + p + 'dec">Decimales affichees</label>'
+  + '<select id="' + p + 'dec" onchange="dspApercu(' + i + ')">'
+  +   '<option value="0">0 — 3000</option>'
+  +   '<option value="1">1 — 3000,4</option>'
+  +   '<option value="2">2 — 3000,42</option>'
+  +   '<option value="3">3 — 3000,417</option>'
+  + '</select>'
+
+  + '</div>'   // fin du repli manuel
+  + '</div>';
+}
+
+function dspConstruireBlocs() {
+  var h = '';
+  for (var i = 0; i < DSP_NB; i++) h += dspBlocHtml(i);
+  document.getElementById('dspBlocs').innerHTML = h;
+  for (var k = 0; k < DSP_NB; k++) dspChangeCanal(k);
+}
+
+// Appelee quand l'utilisateur bouge le menu deroulant.
+//   -2 = rien           -> valeur coupee
+//   -1 = manuel         -> on deplie les champs detailles
+//   0..37 = canal Link  -> tout est deduit, rien a saisir
+function dspChangeCanal(i) {
+  var p = 'd' + i;
+  var canal = parseInt(document.getElementById(p + 'canal').value, 10);
+  document.getElementById(p + 'manuel').style.display = (canal === -1) ? '' : 'none';
+
+  if (canal >= 0) {
+    // La structure du flux est imposee : on ne garde que l'identifiant,
+    // et on pre-remplit celui du Generic Dash.
+    document.getElementById(p + 'en').checked = true;
+    var champId = document.getElementById(p + 'id');
+    var v = parseInt(champId.value, 10);
+    if (!v || v <= 0) champId.value = LINK_ID_DEFAUT;
+    document.getElementById(p + 'ext').value = '0';
+  } else if (canal === -2) {
+    document.getElementById(p + 'en').checked = false;
+  }
+  dspApercu(i);
+}
+
+function dspLireChamps(i) {
+  var p = 'd' + i, g = function (s) { return document.getElementById(p + s); };
+  var canal = parseInt(g('canal').value, 10);
+  return {
+    canal: canal,
+    en:  (canal === -2) ? 0 : (g('en').checked ? 1 : 0),
+    id:  parseInt(g('id').value, 10),
+    ext: parseInt(g('ext').value, 10),
+    off: parseInt(g('off').value, 10),
+    len: parseInt(g('len').value, 10),
+    fmt: parseInt(g('fmt').value, 10),
+    be:  parseInt(g('be').value, 10),
+    mul: parseFloat(g('mul').value),
+    add: parseFloat(g('add').value),
+    dec: parseInt(g('dec').value, 10),
+    nom: g('nom').value
+  };
+}
+
+// Les MEMES controles que le firmware, mot pour mot. Le firmware REFUSE
+// toute la configuration sur une valeur invalide -- pas seulement ce
+// champ. Un utilisateur verrait donc sa sauvegarde entiere echouer sans
+// savoir pourquoi. On lui dit ici, avant l'envoi.
+function dspErreur(v) {
+  // Rien a afficher : aucun controle a faire.
+  if (v.canal === -2) return '';
+
+  if (isNaN(v.id) || v.id < 0)                   return 'Identifiant CAN manquant.';
+
+  // Canal Link : la structure du flux impose octet, taille, format et
+  // ordre des octets. Seul l'identifiant reste a verifier.
+  if (v.canal >= 0) {
+    if (v.ext ? (v.id > 0x1FFFFFFF) : (v.id > 0x7FF)) return 'Identifiant hors plage.';
+    return '';
+  }
+
+  if (v.ext ? (v.id > 0x1FFFFFFF) : (v.id > 0x7FF))
+    return 'Identifiant hors plage : ' + (v.ext ? '29 bits s’arrete a 0x1FFFFFFF'
+                                                : '11 bits s’arrete a 0x7FF') + '.';
+  if (isNaN(v.off) || v.off < 0 || v.off > 7)    return 'Le premier octet va de 0 a 7.';
+  if (v.len !== 1 && v.len !== 2 && v.len !== 4) return 'Taille invalide.';
+  if (v.off + v.len > 8)                         return 'L’octet ' + v.off + ' plus ' + v.len
+                                                        + ' octets depasse la trame (8 octets).';
+  if (v.fmt === 2 && v.len !== 4)                return 'Un flottant 32 bits occupe 4 octets.';
+  if (isNaN(v.mul))                              return 'Facteur manquant.';
+  if (isNaN(v.add))                              return 'Decalage manquant.';
+  if (v.nom.length > 8)                          return 'Le nom fait 8 caracteres au maximum.';
+  if (v.nom.length && !/^[A-Za-z0-9_\-./ ]+$/.test(v.nom))
+    return 'Le nom accepte lettres, chiffres, espace, - _ . / seulement.';
+  return '';
+}
+
+// ⚠ Le 12e champ, le canal Link, est AJOUTE A LA FIN. Une chaine ecrite
+// par une version anterieure n'en a que onze : elle doit continuer de se
+// relire sans erreur. Le nom ne peut pas contenir de virgule, donc
+// l'ajout est sans ambiguite.
+function dspVersTexte(v) {
+  var gd = (v.canal >= 0) ? v.canal : -1;
+  return [v.en, v.id, v.ext, v.off, v.len, v.fmt, v.be,
+          v.mul, v.add, v.dec, v.nom, gd].join(',');
+}
+
+function dspDepuisTexte(t) {
+  var c = String(t || '').split(',');
+  if (c.length < 10) return null;
+  var gd = (c.length >= 12) ? parseInt(c[11], 10) : -1;
+  if (isNaN(gd)) gd = -1;
+  var en = parseInt(c[0], 10) ? 1 : 0;
+  return {
+    en: en, id: parseInt(c[1], 10) || 0,
+    ext: parseInt(c[2], 10) ? 1 : 0, off: parseInt(c[3], 10) || 0,
+    len: parseInt(c[4], 10) || 2, fmt: parseInt(c[5], 10) || 0,
+    be: parseInt(c[6], 10) ? 1 : 0, mul: parseFloat(c[7]),
+    add: parseFloat(c[8]), dec: parseInt(c[9], 10) || 0,
+    nom: (c.length >= 12) ? c[10] : c.slice(10).join(','),
+    // Ce que le menu deroulant doit montrer : un canal Link, sinon
+    // « manuel » si la valeur est active, sinon « rien ».
+    canal: (gd >= 0) ? gd : (en ? -1 : -2)
+  };
+}
+
+function dspApercu(i) {
+  var el = document.getElementById('d' + i + 'apercu');
+  if (!el) return;
+  var v = dspLireChamps(i);
+
+  // Un flottant fait toujours 4 octets : on l'impose plutot que de laisser
+  // l'utilisateur composer un reglage que le firmware refusera.
+  var selLen = document.getElementById('d' + i + 'len');
+  if (v.fmt === 2) { selLen.value = '4'; selLen.disabled = true; v.len = 4; }
+  else             { selLen.disabled = false; }
+
+  var err = dspErreur(v);
+  if (err) {
+    el.innerHTML = '<span style="color:var(--danger);">' + err + '</span>';
+    return;
+  }
+  if (v.canal === -2) {
+    el.textContent = 'Cette moitie de l’ecran restera vide.';
+    return;
+  }
+
+  if (v.canal >= 0) {
+    // On dit ou la valeur sera lue, sans que l'utilisateur ait rien
+    // saisi : c'est la preuve que le reglage est complet.
+    var sous = Math.floor(v.canal / 3);
+    var slot = v.canal % 3;
+    el.innerHTML = '<b>' + LINK_CANAUX[v.canal] + '</b><br>'
+      + 'Lu sur l’identifiant ' + v.id + ' (0x' + v.id.toString(16).toUpperCase()
+      + '), sous-trame 0x' + ('0' + sous.toString(16).toUpperCase()).slice(-2)
+      + ', octets ' + (2 + slot * 2) + '-' + (3 + slot * 2) + '.';
+    return;
+  }
+
+  if (!v.en) { el.textContent = 'Valeur coupee — cette moitie de l’ecran restera vide.'; return; }
+
+  el.textContent = 'Lit 0x' + v.id.toString(16).toUpperCase()
+    + ' (' + (v.ext ? '29' : '11') + ' bits), octets ' + v.off + ' a ' + (v.off + v.len - 1)
+    + ', ' + (v.fmt === 2 ? 'flottant' : (v.fmt === 1 ? 'entier signe' : 'entier non signe'))
+    + ', ' + (v.be ? 'gros' : 'petit') + ' boutiste.';
+}
+
+function dspRemplir(j) {
+  for (var i = 0; i < DSP_NB; i++) {
+    var v = dspDepuisTexte(j['dsp' + i]);
+    if (!v) continue;
+    var p = 'd' + i, g = function (s) { return document.getElementById(p + s); };
+    g('en').checked = !!v.en;
+    g('nom').value  = v.nom;
+    g('id').value   = v.id || LINK_ID_DEFAUT;
+    g('ext').value  = String(v.ext);
+    g('off').value  = v.off;
+    g('len').value  = String(v.len);
+    g('fmt').value  = String(v.fmt);
+    g('be').value   = String(v.be);
+    g('mul').value  = isNaN(v.mul) ? 1 : v.mul;
+    g('add').value  = isNaN(v.add) ? 0 : v.add;
+    g('dec').value  = String(v.dec);
+    g('canal').value = String(v.canal);
+    // ⚠ Passer par dspChangeCanal et non par dspApercu : c'est lui qui
+    // deplie ou replie le bloc manuel selon le choix relu.
+    dspChangeCanal(i);
+  }
+}
+
+// Ajoute les deux valeurs a la configuration a envoyer -- SEULEMENT si le
+// firmware connecte les connait. Les envoyer a un DLPT2 ordinaire ne
+// casserait rien (il ignore les cles inconnues), mais on n'envoie pas des
+// reglages a un appareil qui n'en a pas l'usage.
+// Rend un message d'erreur, ou une chaine vide si tout est bon.
+function dspAjouterAConfig(cfg) {
+  if (!dspDisponible) return '';
+  for (var i = 0; i < DSP_NB; i++) {
+    var v = dspLireChamps(i);
+    var err = dspErreur(v);
+    if (err) return 'Valeur ' + (i + 1) + ' de l’ecran : ' + err;
+    cfg['dsp' + i] = dspVersTexte(v);
+  }
+  return '';
+}
+
+// =====================================================================
+// [FUSION] LE MÉTIER DE L'APPAREIL : DRAGLOGICS ou TRLG
+// =====================================================================
+// ⚠ LE MAÎTRE EST DANS LA VOITURE. Cette page LIT `app` dans le JSON du
+// module et s'y range. Elle peut DEMANDER un changement ; c'est le module
+// qui l'applique, le range en NVS et le renvoie. La page ne se croit
+// jamais sur parole : elle relit `app` après coup.
+//
+// ⚠ ON RETIENT LE DERNIER MÉTIER VU, dans le stockage local. Sur la piste
+// le téléphone est près du relais, pas près de la voiture : sans cette
+// mémoire, la page ne saurait pas quoi montrer tant que la voiture n'est
+// pas à portée. La mémoire sert d'affichage, jamais d'autorité -- dès que
+// la voiture répond, c'est elle qui a raison.
+var appMode = null;          // 'dlg' | 'trlg' | null si jamais vu
+try { appMode = localStorage.getItem('dl_app_mode'); } catch (e) {}
+
+function appAfficher() {
+  var g = document.getElementById('grp_app');
+  if (!g) return;
+  var bd = document.getElementById('btnAppDlg');
+  var bt = document.getElementById('btnAppTrlg');
+  var et = document.getElementById('appEtat');
+  var av = document.getElementById('appAvert');
+
+  var connecte = (typeof chrConfig !== 'undefined' && chrConfig);
+
+  // Le métier retenu colore les boutons, même sans connexion.
+  if (bd) bd.className = 'btn' + (appMode === 'dlg'  ? '' : ' btn2');
+  if (bt) bt.className = 'btn' + (appMode === 'trlg' ? '' : ' btn2');
+  if (bd) bd.disabled = !connecte;
+  if (bt) bt.disabled = !connecte;
+
+  if (et) {
+    if (appMode === null) {
+      et.textContent = 'Métier inconnu — connecte le module de la voiture.';
+    } else if (connecte) {
+      et.innerHTML = 'Métier actuel : <b>' + (appMode === 'trlg' ? 'TRLG' : 'DRAGLOGICS') + '</b>.';
+    } else {
+      et.innerHTML = 'Dernier métier vu : <b>' + (appMode === 'trlg' ? 'TRLG' : 'DRAGLOGICS')
+                   + '</b>. Connecte la voiture pour en changer.';
+    }
+  }
+
+  // ⚠ L'AVERTISSEMENT QUI COMPTE. Sans le module de la voiture à portée,
+  // le métier ne peut pas changer -- il n'y a pas de marche arrière par le
+  // relais. Le dire AVANT que l'utilisateur parte en piste vaut mieux que
+  // de le lui laisser découvrir là-bas.
+  if (av) {
+    if (appMode === 'trlg' && !connecte) {
+      av.style.display = '';
+      av.textContent = 'Le module de la voiture n’est pas connecté. Tant qu’il ne l’est pas, '
+                     + 'le métier ne peut pas revenir à DRAGLOGICS — le relais n’a pas ce pouvoir.';
+    } else {
+      av.style.display = 'none';
+    }
+  }
+
+  // Le bloc du relais ne s'ouvre qu'en TRLG : chercher un beacon en mode
+  // ligne droite n'aurait aucun sens, et le module l'ignore de toute façon.
+  var gr = document.getElementById('grp_relais');
+  if (gr) gr.style.display = (appMode === 'trlg') ? '' : 'none';
+}
+
+async function appDemander(tok) {
+  var et = document.getElementById('appEtat');
+  if (typeof chrConfig === 'undefined' || !chrConfig) {
+    if (et) et.textContent = 'Connecte d’abord le module de la voiture.';
+    return;
+  }
+  if (tok === appMode) return;
+  try {
+    if (et) et.textContent = 'Changement demandé — le module redémarre...';
+    await chrConfig.writeValueWithResponse(enc.encode(JSON.stringify({ app: tok })));
+    // ⚠ ON N'ÉCRIT PAS `appMode` ICI. Le module est le maître : on attend
+    // qu'il le confirme dans son JSON à la reconnexion. Le noter tout de
+    // suite ferait mentir la page si le module refusait le changement.
+    if (et) et.innerHTML = 'Changement envoyé. Le module redémarre, puis '
+                         + '<b>reconnecte-toi</b> pour confirmer.';
+  } catch (e) {
+    if (et) et.textContent = 'Échec : ' + e.message;
+  }
+}
+
+// [FUSION] Les 38 canaux du Generic Dash Link et les drapeaux de limite,
+// repris tels quels de la page TRLG. Leur ORDRE fait partie du protocole :
+// le resume de tour arrive en min/max/moy dans cet ordre exact, sans nom.
+// Deplacer une ligne decalerait silencieusement toutes les valeurs.
+const CHANNELS = [
+  { name: "Engine Speed",       unit: "RPM",  txScale: 1 },
+  { name: "MAP",                unit: "kPa",  txScale: 10 },
+  { name: "MGP",                unit: "kPa",  txScale: 10 },
+  { name: "Barometric Pressure",unit: "kPa",  txScale: 10 },
+  { name: "Throttle Position",  unit: "%",    txScale: 10 },
+  { name: "Injector Duty",      unit: "%",    txScale: 10 },
+  { name: "Sec. Injector Duty", unit: "%",    txScale: 10 },
+  { name: "Injector Pulse W.",  unit: "ms",   txScale: 100 },
+  { name: "Coolant Temp",       unit: "°C",   txScale: 10 },
+  { name: "Intake Air Temp",    unit: "°C",   txScale: 10 },
+  { name: "Battery Voltage",    unit: "V",    txScale: 100 },
+  { name: "Mass Air Flow",      unit: "g/s",  txScale: 10 },
+  { name: "Gear",               unit: "",     txScale: 1 },
+  { name: "Injector Timing",    unit: "°",    txScale: 1 },
+  { name: "Ignition Timing",    unit: "°",    txScale: 10 },
+  { name: "Inlet Cam L",        unit: "°",    txScale: 10 },
+  { name: "Inlet Cam R",        unit: "°",    txScale: 10 },
+  { name: "Exhaust Cam L",      unit: "°",    txScale: 10 },
+  { name: "Exhaust Cam R",      unit: "°",    txScale: 10 },
+  { name: "Lambda 1",           unit: "λ",    txScale: 1000 },
+  { name: "Lambda 2",           unit: "λ",    txScale: 1000 },
+  { name: "Trigger 1 Err",      unit: "",     txScale: 1 },
+  { name: "Fault Code Count",   unit: "",     txScale: 1 },
+  { name: "Fuel Pressure",      unit: "kPa",  txScale: 1 },
+  { name: "Oil Temp",           unit: "°C",   txScale: 10 },
+  { name: "Oil Pressure",       unit: "kPa",  txScale: 1 },
+  { name: "Wheel Speed LF",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed LR",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed RF",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed RR",     unit: "km/h", txScale: 10 },
+  { name: "Knock Cyl 1",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 2",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 3",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 4",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 5",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 6",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 7",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 8",        unit: "",     txScale: 1 },
+];
+
+const LIMIT_FLAGS = [
+  "RPM Limit", "MAP Limit", "Speed Limit", "Maximum Ignition",
+  "Anti-Lag Ignition Cut", "High Voltage Supply Limit", "Overrun", "Traction Limit",
+  "Low Supply Voltage Limit", "Launch RPM Limit", "Wakeup", "GP RPM Limit 1",
+  "CL Stepper Limit", "GP RPM Limit 2", "E-Throttle Limit", "Cyclic Idle Active",
+];
+
+// =====================================================================
+// [FUSION] LE RELAIS TRLG — deuxième connexion BLE, indépendante
+// =====================================================================
+// ⚠ TOUT EST PRÉFIXÉ `rl`. La page DRAGLOG a déjà un `bleDevice`, un
+// `onNotify` et un `laps`. Réutiliser ces noms ferait que la connexion au
+// relais écraserait celle de la voiture — et la marche arrière vers
+// DRAGLOGICS disparaîtrait au premier tour reçu.
+//
+// ⚠ LE RELAIS COUPE SON BLE ENTRE LES TOURS, VOLONTAIREMENT. Un seul
+// ESP32 ne tient pas du BLE continu ET une bonne réception radio en même
+// temps ; le relais choisit la radio, et rallume le BLE juste après chaque
+// tour. La page doit donc se reconnecter seule à chaque réapparition, sans
+// redemander la permission. Une déconnexion n'est PAS une panne ici : la
+// traiter comme telle ferait afficher une erreur vingt fois par séance.
+const RL_SVC  = "b3d5a900-1a2b-4c3d-9e0f-56789abcdef0";
+const RL_DATA = "b3d5a901-1a2b-4c3d-9e0f-56789abcdef0";
+const RL_CMD  = "b3d5a902-1a2b-4c3d-9e0f-56789abcdef0";
+
+var rlDevice = null, rlCmdChar = null;
+var rlQuitte = false, rlReconnecte = false;
+var rlLaps = [];
+var rlTraces = new Map();
+var rlLapVu = null;
+
+function rlEtat(txt) {
+  var e = document.getElementById('relaisStatus');
+  if (e) e.textContent = txt;
+}
+
+async function relaisConnecter() {
+  if (!navigator.bluetooth) { rlEtat('Ce navigateur ne fait pas le Bluetooth Web.'); return; }
+  try {
+    rlEtat('Recherche du relais...');
+    rlDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [RL_SVC] }],
+      optionalServices: [RL_SVC]
+    });
+    rlQuitte = false;
+    rlDevice.addEventListener('gattserverdisconnected', function () {
+      if (!rlQuitte) rlReconnexion();
+      else rlEtat('Déconnecté.');
+    });
+    var srv = await rlDevice.gatt.connect();
+    await rlAttacher(srv);
+  } catch (e) {
+    rlEtat('Erreur : ' + e.message);
+  }
+}
+
+async function rlAttacher(server) {
+  var svc = await server.getPrimaryService(RL_SVC);
+  var ch  = await svc.getCharacteristic(RL_DATA);
+  await ch.startNotifications();
+  ch.addEventListener('characteristicvaluechanged', rlNotif);
+  rlCmdChar = await svc.getCharacteristic(RL_CMD);
+  rlEtat('Connecté à ' + (rlDevice.name || 'TRLG-Relais') + '. En attente d’un tour...');
+  var b = document.getElementById('relaisBloc');
+  if (b) b.style.display = '';
+}
+
+async function rlReconnexion() {
+  if (rlReconnecte) return;
+  rlReconnecte = true;
+  rlEtat('Relais hors ligne (BLE coupé entre les tours) — reconnexion automatique...');
+  while (!rlQuitte) {
+    try {
+      var srv = await rlDevice.gatt.connect();
+      await rlAttacher(srv);
+      rlReconnecte = false;
+      return;
+    } catch (e) {
+      await new Promise(function (r) { setTimeout(r, 2000); });
+    }
+  }
+  rlReconnecte = false;
+}
+
+function rlNotif(ev) {
+  var bytes = new Uint8Array(ev.target.value.buffer);
+  if (bytes.length < 2) return;
+  if (bytes[0] === 0x01) rlDecodeTour(bytes);
+  else if (bytes[0] === 0x02) rlDecodeTrace(bytes);
+}
+
+// ---- Résumé de tour ----
+function rlDecodeTour(bytes) {
+  var v = new DataView(bytes.buffer);
+  var num = v.getUint16(1, true);
+  var dureeMs = v.getUint32(3, true);
+  var source = v.getUint8(7);   // 0 = radio 1er beacon, 1 = ligne GPS, 2 = radio pic
+  var vals = [], off = 8;
+  for (var i = 0; i < CHANNELS.length; i++) {
+    vals.push({ min: v.getInt16(off, true), max: v.getInt16(off + 2, true), avg: v.getInt16(off + 4, true) });
+    off += 6;
+  }
+  var flags = v.getUint16(off, true); off += 2;
+  var oLat = null, oLon = null, dMax = null;
+  if (bytes.length >= off + 10) {
+    oLat = v.getInt32(off, true) / 1e7; off += 4;
+    oLon = v.getInt32(off, true) / 1e7; off += 4;
+    dMax = v.getUint16(off, true); off += 2;
+  }
+  var lap = { num: num, dureeMs: dureeMs, source: source, vals: vals,
+              flags: flags, oLat: oLat, oLon: oLon, dMax: dMax };
+  rlLaps.push(lap);
+  rlLapVu = lap;
+  rlRendre();
+}
+
+// ---- Trace ----
+function rlDecodeTrace(bytes) {
+  var v = new DataView(bytes.buffer);
+  var num = v.getUint16(1, true);
+  var idx = v.getUint8(3), nb = v.getUint8(4), npts = v.getUint8(5);
+  var t = rlTraces.get(num);
+  if (!t) { t = { parts: [], nb: nb }; rlTraces.set(num, t); }
+  t.nb = nb;
+  var pts = [], off = 16;
+  for (var i = 0; i < npts && off + 5 <= bytes.length; i++) {
+    pts.push({ dx: v.getInt16(off, true), dy: v.getInt16(off + 2, true), kmh: v.getUint8(off + 4) });
+    off += 5;
+  }
+  t.parts[idx] = pts;
+  if (rlLapVu && rlLapVu.num === num) rlDessinerTrace(num);
+}
+
+function rlTraceEntiere(t) {
+  if (!t) return [];
+  var out = [];
+  for (var i = 0; i < t.nb; i++) if (t.parts[i]) out = out.concat(t.parts[i]);
+  return out;
+}
+
+function rlCouleur(kmh, min, max) {
+  var u = max > min ? (kmh - min) / (max - min) : 0.5;
+  return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)';
+}
+
+function rlDessinerTrace(num) {
+  var c = document.getElementById('speedMap');
+  if (!c) return;
+  var pts = rlTraceEntiere(rlTraces.get(num));
+  var lg = document.getElementById('speedLegend');
+  if (pts.length < 2) { c.style.display = 'none'; if (lg) lg.textContent = ''; return; }
+  c.style.display = '';
+
+  var vits = pts.map(function (p) { return p.kmh; });
+  var vmin = Math.min.apply(null, vits), vmax = Math.max.apply(null, vits);
+
+  var dpr = window.devicePixelRatio || 1;
+  var w = c.clientWidth;
+  var h = Math.max(180, Math.min(460, Math.round(w * 0.72), Math.round(window.innerHeight * 0.55)));
+  c.style.height = h + 'px';
+  c.width = w * dpr; c.height = h * dpr;
+  var g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
+  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  var pad = 24;
+  var s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1), (h - 2 * pad) / Math.max(maxY - minY, 1));
+  var ox = (w - (maxX - minX) * s) / 2, oy = (h - (maxY - minY) * s) / 2;
+  function X(x) { return ox + (x - minX) * s; }
+  function Y(y) { return h - (oy + (y - minY) * s); }
+
+  g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (var i = 1; i < pts.length; i++) {
+    g.strokeStyle = rlCouleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax);
+    g.beginPath();
+    g.moveTo(X(pts[i - 1].dx), Y(pts[i - 1].dy));
+    g.lineTo(X(pts[i].dx), Y(pts[i].dy));
+    g.stroke();
+  }
+  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
+  g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+
+  // ⚠ ON DIT LES MORCEAUX MANQUANTS. Un tracé incomplet ressemble à un
+  // tracé complet d'un tour plus court : sans ce compte, on lirait une
+  // trajectoire tronquée comme une vraie.
+  var t = rlTraces.get(num);
+  var manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
+  if (lg) {
+    lg.innerHTML = 'Vert = lent, rouge = rapide (' + vmin + ' à ' + vmax + ' km/h). '
+                 + pts.length + ' points'
+                 + (manque > 0 ? ' — <b>' + manque + ' morceau(x) manquant(s)</b>, tracé incomplet.' : '');
+  }
+}
+
+function rlDuree(ms) { return (ms / 1000).toFixed(2) + ' s'; }
+
+function rlRendre() {
+  var lap = rlLapVu;
+  if (!lap) return;
+  rlDessinerTrace(lap.num);
+
+  var idx = rlLaps.indexOf(lap);
+  var prec = idx > 0 ? rlLaps[idx - 1] : null;
+  var delta = '';
+  if (prec) {
+    var d = lap.dureeMs - prec.dureeMs;
+    delta = (d >= 0 ? '+' : '') + (d / 1000).toFixed(2) + ' s vs #' + prec.num;
+  }
+
+  // ⚠ LA SOURCE DU CHRONO EST AFFICHÉE AVEC LE TEMPS. Un tour chronométré
+  // au pic radio ne vaut pas un tour chronométré à la ligne GPS. Les
+  // montrer sans distinction ferait comparer deux mesures différentes.
+  var src = lap.source === 1 ? 'ligne GPS (précis)'
+          : lap.source === 2 ? 'radio, pic du signal'
+          : 'radio, premier signal';
+
+  var g = document.getElementById('relaisGrid');
+  if (g) {
+    g.innerHTML =
+      '<div><div class="small">Tour</div><div style="font-size:1.6em;">#' + lap.num + '</div></div>' +
+      '<div><div class="small">Temps</div><div style="font-size:1.6em;">' + rlDuree(lap.dureeMs) + '</div></div>' +
+      '<div><div class="small">Écart</div><div>' + (delta || '—') + '</div></div>' +
+      '<div><div class="small">Chronométrage</div><div>' + src + '</div></div>';
+  }
+
+  var actifs = LIMIT_FLAGS.filter(function (_, i) { return (lap.flags & (1 << i)) !== 0; });
+
+  var h = '';
+  if (actifs.length) h += '<div class="err">⚠ ' + actifs.join(' · ') + '</div>';
+  if (lap.dMax != null) {
+    // ⚠ 65535 EST UNE SATURATION, PAS UNE DISTANCE. Le champ est sur 16
+    // bits ; la valeur plafond veut dire « au-delà de 65 km », ce qui, en
+    // pratique, veut dire que l'origine GPS était fausse. L'afficher comme
+    // une mesure ferait chercher une erreur de trajet inexistante.
+    if (lap.dMax >= 65535) {
+      h += '<div class="err small">Distance depuis l’origine saturée — l’origine GPS n’était pas valide sur ce tour.</div>';
+    } else {
+      h += '<div class="small">📍 Jusqu’à ' + lap.dMax + ' m de l’origine';
+      if (lap.oLat) {
+        h += ' — <a href="https://www.google.com/maps?q=' + lap.oLat + ',' + lap.oLon
+           + '" target="_blank" rel="noopener">origine sur la carte</a>';
+      }
+      h += '</div>';
+    }
+  }
+
+  // Historique : le plus récent en haut, le meilleur souligné.
+  var best = null;
+  rlLaps.forEach(function (l) { if (!best || l.dureeMs < best.dureeMs) best = l; });
+  h += '<div style="margin-top:12px;"><h2 style="font-size:1em;">Tours</h2>';
+  for (var i = rlLaps.length - 1; i >= 0; i--) {
+    var l = rlLaps[i];
+    h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(128,128,128,.2);cursor:pointer;"'
+       + ' onclick="rlVoir(' + l.num + ')">'
+       + '<span>#' + l.num + (l === best ? ' ★' : '') + '</span>'
+       + '<span>' + rlDuree(l.dureeMs) + '</span></div>';
+  }
+  h += '</div>';
+
+  var t = document.getElementById('relaisTours');
+  if (t) t.innerHTML = h;
+}
+
+function rlVoir(num) {
+  for (var i = 0; i < rlLaps.length; i++) {
+    if (rlLaps[i].num === num) { rlLapVu = rlLaps[i]; rlRendre(); return; }
+  }
+}
+
+window.addEventListener('resize', function () { if (rlLapVu) rlDessinerTrace(rlLapVu.num); });
+
+
+var CAPS = [
+  { grp: 'grp_cbr',  cle: 'cbr',  nom: 'debit CAN reglable' },
+  { grp: 'grp_ecid', cle: 'ecid', nom: 'mode ECUMaster' },
+  { grp: 'grp_scid', cle: 'scid', nom: 'declencheur CAN' },
+  // ⚠ `materiel: true` = l'absence de cette cle n'est PAS un manque de
+  // firmware, c'est une carte sans ecran. La banniere « firmware plus
+  // ancien » ne doit donc pas la nommer : sinon TOUS les DRAGLOG normaux
+  // afficheraient une alerte pour une fonction qu'ils n'auront jamais, et
+  // une alerte permanente cesse d'etre lue.
+  { grp: 'grp_dsp',  cle: 'dsp0', nom: 'ecran divise (DLdisplay)', materiel: true },
+  // [FUSION] ⚠ `materiel: true` ici aussi : un DRAGLOG ordinaire n'est pas
+  // un module fusionne diminue, c'est un autre produit. Le nommer dans la
+  // banniere « firmware plus ancien » mettrait une alerte permanente sur
+  // tous les modules du parc pour une fonction qu'ils n'auront jamais.
+  { grp: 'grp_app',  cle: 'app',  nom: 'interrupteur DRAGLOGICS / TRLG', materiel: true }
+];
+
+function appliquerCapacites(j) {
+  // Un DLAP n'est pas un DRAGLOG diminue : on bascule la page entiere et on
+  // sort. La banniere "firmware plus ancien" n'aurait aucun sens ici.
+  if (j.dev === 'DLAP') {
+    appliquerModeDlap(true);
+    document.getElementById('fwBanner').style.display = 'none';
+    return;
+  }
+  appliquerModeDlap(false);
+
+  var manquants = [];
+  CAPS.forEach(function (c) {
+    var present = (j[c.cle] != null);
+    var el = document.getElementById(c.grp);
+    if (el) el.style.display = present ? '' : 'none';
+    if (!present && !c.materiel) manquants.push(c.nom);
+  });
+
+  // L'ecran divise depend de la carte, pas de la version : on retient sa
+  // presence pour n'envoyer ses reglages qu'aux modules qui en ont un.
+  dspDisponible = (j.dsp0 != null);
+  if (dspDisponible) dspRemplir(j);
+
+  // [FUSION] LE MÉTIER, TEL QUE LE MODULE LE DÉCLARE. C'est le seul endroit
+  // où `appMode` prend sa valeur d'autorité. On le retient pour que la page
+  // sache quoi montrer plus tard, quand le téléphone sera près du relais et
+  // loin de la voiture.
+  if (j.app === 'dlg' || j.app === 'trlg') {
+    appMode = j.app;
+    try { localStorage.setItem('dl_app_mode', appMode); } catch (e) {}
+  }
+  appAfficher();
+
+  // Le mode ECUMaster se deduit de la presence de son ID de base. Le laisser
+  // selectionnable sur un firmware qui l'ignore ferait echouer la sauvegarde
+  // COMPLETE, pas seulement ce champ.
+  var opt = document.querySelector('#mode option[value="ECUMASTER"]');
+  if (opt) {
+    var ok = (j.ecid != null);
+    opt.hidden = !ok;
+    opt.disabled = !ok;
+  }
+
+  var b = document.getElementById('fwBanner');
+  if (!b) return;
+  if (manquants.length === 0) { b.style.display = 'none'; return; }
+  b.style.display = '';
+  b.innerHTML = '<b>Firmware plus ancien detecte.</b> Ce module ne connait pas : '
+              + manquants.join(', ')
+              + '. Ces reglages sont masques — les afficher ne servirait a rien, '
+              + 'et proposer un mode inconnu ferait echouer toute la sauvegarde.';
+}
+
+// [v8.2] Declencheur CAN. Les deux echos servent a attraper une faute de
+// frappe avant de sauvegarder : un ID se lit en hexadecimal partout ailleurs
+// (analyseur, doc ECU), et un masque de bits ne se verifie qu'en binaire.
+function syncCanTrig() {
+  var id = parseInt(document.getElementById('scid').value, 10);
+  var ext = document.getElementById('scext').value === '1';
+  var eh = document.getElementById('scidHex');
+  if (eh) {
+    var maxId = ext ? 0x1FFFFFFF : 0x7FF;
+    if (isNaN(id) || id === 0) eh.textContent = 'Declencheur desactive.';
+    else if (id > maxId) eh.textContent = 'Hors plage : ' + (ext ? '29 bits' : '11 bits')
+                                          + ' s’arrete a 0x' + maxId.toString(16).toUpperCase() + '.';
+    else eh.textContent = 'Soit 0x' + id.toString(16).toUpperCase() + ' en hexadecimal.';
+  }
+  var mk = parseInt(document.getElementById('scmk').value, 10);
+  var eb = document.getElementById('scmkBin');
+  if (eb) {
+    if (isNaN(mk) || mk < 1 || mk > 255) eb.textContent = 'Masque invalide (1 a 255).';
+    else {
+      var bits = [];
+      for (var i = 7; i >= 0; i--) if (mk & (1 << i)) bits.push('bit ' + i);
+      eb.textContent = 'Binaire ' + ('0000000' + mk.toString(2)).slice(-8)
+                       + ' — retient ' + bits.join(', ') + '.';
+    }
+  }
+}
+
+function syncBitrateToMode() {
+  var m = document.getElementById('mode').value;
+  if (CBR_DEFAUT[m] != null) document.getElementById('cbr').value = String(CBR_DEFAUT[m]);
+  lockBitrateIfHolley();
+}
+
+async function refreshConfig() {
+  if (!chrConfig) return;
+  var j;
+  try { j = JSON.parse(dec.decode(await chrConfig.readValue())); } catch (e) { return; }
+
+  // AVANT de remplir les champs : le firmware declare ses capacites par les
+  // cles de son propre JSON, et l'option ECUMASTER doit etre reactivee avant
+  // qu'on tente de la selectionner ci-dessous.
+  appliquerCapacites(j);
+
+  // ⚠ AVANT le retour anticipe du DLAP : les deux appareils envoient "fw",
+  // et on veut la version affichee dans les deux cas. Place apres le
+  // return, elle n'apparaitrait jamais pour le DLAP.
+  var elFw = document.getElementById('fwVer');
+  if (elFw) elFw.textContent = j.fw ? (' · ' + j.fw) : ' · firmware inconnu';
+
+  // Le DLAP n'a aucun des champs qui suivent : on remplit son panneau et on
+  // sort, sinon on ecrirait "undefined" partout.
+  if (j.dev === 'DLAP') { remplirDlap(j); return; }
+
+  var selMode = document.getElementById('mode');
+  selMode.value = j.mode;
+  // Garde-fou : un mode que la page ne connait pas laisserait le select a "",
+  // et la sauvegarde renverrait mode:"" -> refus du firmware. On ajoute
+  // l'option telle quelle plutot que de renvoyer une valeur vide.
+  if (selMode.value !== j.mode) {
+    var o = document.createElement('option');
+    o.value = j.mode; o.text = j.mode + ' (inconnu de cette page)';
+    selMode.appendChild(o);
+    selMode.value = j.mode;
+  }
+  if (j.cbr != null) document.getElementById('cbr').value = j.cbr;
+  lockBitrateIfHolley();
+  document.getElementById('hid').value = j.hid;
+  if (j.ecid != null) document.getElementById('ecid').value = j.ecid;
+  syncEcuRange();
+  if (j.scid  != null) document.getElementById('scid').value  = j.scid;
+  if (j.scext != null) document.getElementById('scext').value = j.scext ? '1' : '0';
+  if (j.scby  != null) document.getElementById('scby').value  = j.scby;
+  if (j.scmk  != null) document.getElementById('scmk').value  = j.scmk;
+  if (j.sced  != null) document.getElementById('sced').value  = j.sced;
+  syncCanTrig();
+  document.getElementById('grate').value = j.grate;
+  document.getElementById('dynm').value = j.dynm;
+  if (j.hecu != null) document.getElementById('hecu').value = j.hecu;
+  if (j.imuf != null) document.getElementById('imuf').value = j.imuf;
+  if (j.strig != null) document.getElementById('strig').value = j.strig;
+  document.getElementById('t50').checked = !!j.t50;
+  document.getElementById('tzh').value = j.tzh;
+  document.getElementById('tzm').value = j.tzm;
+  document.getElementById('ltcan').checked = !!j.ltcan;
+  document.getElementById('pfft').value = (j.pfft != null ? j.pfft : 0);
+  document.getElementById('sfx').value = (j.sfx != null ? j.sfx : '00001');
+  syncUnitName();
+}
+
+async function submitConfig(ev) {
+  ev.preventDefault();
+  var msg = document.getElementById('cfgMsg');
+  // ⚠ Ne PAS exiger chrCommand : le DLAP ne l'expose pas, et l'exiger
+  // bloquait toute sauvegarde chez lui. Seule CONFIG est indispensable.
+  if (!chrConfig) {
+    msg.innerHTML = "<div class='err'>Non connecte au module BLE.</div>";
+    return false;
+  }
+
+  // ---- Cas DLAP : rien a voir avec la config d'un DRAGLOG ----
+  if (estDlap) {
+    var d = {
+      ssid1: document.getElementById('dssid1').value,
+      ssid2: document.getElementById('dssid2').value,
+      gho:   document.getElementById('dgho').value,
+      ghr:   document.getElementById('dghr').value,
+      ghb:   document.getElementById('dghb').value
+    };
+    // Un champ secret laisse VIDE conserve la valeur enregistree -- on ne
+    // l'envoie tout simplement pas. C'est la seule facon de le preserver,
+    // puisque le DLAP ne nous le renvoie jamais.
+    var p1 = document.getElementById('dpass1').value;
+    var p2 = document.getElementById('dpass2').value;
+    var tk = document.getElementById('dtok').value;
+    if (p1) d.pass1 = p1;
+    if (p2) d.pass2 = p2;
+    if (tk) d.tok   = tk;
+    try {
+      await chrConfig.writeValueWithResponse(enc.encode(JSON.stringify(d)));
+      msg.innerHTML = "<div class='ok'>Configuration du DLAP enregistree.</div>";
+      await refreshConfig();
+    } catch (e) {
+      msg.innerHTML = "<div class='err'>Echec : " + e.message + "</div>";
+    }
+    return false;
+  }
+  var action = ev.submitter ? ev.submitter.value : 'save';
+
+  if (action === 'reboot') {
+    msg.innerHTML = "<div class='ok'>Redemarrage demande...</div>";
+    await writeCommand('reboot');
+    return false;
+  }
+
+  var cfg = {
+    mode: document.getElementById('mode').value,
+    cbr: parseInt(document.getElementById('cbr').value, 10),
+    hid: parseInt(document.getElementById('hid').value, 10),
+    ecid: parseInt(document.getElementById('ecid').value, 10),
+    scid: parseInt(document.getElementById('scid').value, 10),
+    scext: document.getElementById('scext').value === '1' ? 1 : 0,
+    scby: parseInt(document.getElementById('scby').value, 10),
+    scmk: parseInt(document.getElementById('scmk').value, 10),
+    sced: parseInt(document.getElementById('sced').value, 10),
+    grate: parseInt(document.getElementById('grate').value, 10),
+    pfft: parseInt(document.getElementById('pfft').value, 10),
+    sfx: syncUnitName(),
+    dynm: parseInt(document.getElementById('dynm').value, 10),
+    hecu: parseInt(document.getElementById('hecu').value, 10),
+    imuf: parseInt(document.getElementById('imuf').value, 10),
+    strig: parseInt(document.getElementById('strig').value, 10),
+    t50: document.getElementById('t50').checked ? 1 : 0,
+    tzh: parseInt(document.getElementById('tzh').value, 10),
+    tzm: parseInt(document.getElementById('tzm').value, 10),
+    ltcan: document.getElementById('ltcan').checked ? 1 : 0
+  };
+
+  // Ecran divise du DLdisplay. ⚠ Le firmware REFUSE la configuration
+  // ENTIERE sur une valeur invalide -- pas seulement le champ fautif. On
+  // arrete donc ici, avec un message qui dit laquelle des deux valeurs
+  // bloque, plutot que de laisser echouer toute la sauvegarde sans raison
+  // visible.
+  var errDsp = dspAjouterAConfig(cfg);
+  if (errDsp) {
+    msg.innerHTML = "<div class='err'>" + errDsp + "</div>";
+    return false;
+  }
+
+  try {
+    await chrConfig.writeValueWithResponse(enc.encode(JSON.stringify(cfg)));
+    msg.innerHTML = "<div class='ok'>Configuration sauvegardee.</div>";
+    await refreshState();
+    if (action === 'save_reboot') {
+      msg.innerHTML = "<div class='ok'>Configuration sauvegardee. Redemarrage demande...</div>";
+      await writeCommand('reboot');
+    }
+  } catch (e) {
+    msg.innerHTML = "<div class='err'>Echec : " + e.message + "</div>";
+  }
+  return false;
+}
+
+// Les deux blocs de l'ecran divise sont construits AU CHARGEMENT, avant
+// toute connexion : appliquerCapacites() appelle dspRemplir(), qui a besoin
+// que les champs existent deja. Le groupe reste masque tant qu'aucun
+// firmware n'annonce la cle `dsp0`.
+dspConstruireBlocs();
+
+if (!navigator.bluetooth) document.getElementById('bleUnsupported').style.display = 'block';
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js').catch(function () {});
+}
+</script>
+</body>
+</html>

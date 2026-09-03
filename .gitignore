@@ -1,0 +1,13 @@
+﻿# La PWA est servie telle quelle par GitHub Pages : rien a compiler.
+# ⚠ RIEN QUI PORTE UN IDENTIFIANT. Le jeton GitHub encode dans un QR est
+# un identifiant en clair : il donne l acces en ecriture au depot.
+*token*
+*jeton*
+*.pem
+*.key
+secrets.*
+qr_jeton*.png
+
+Thumbs.db
+desktop.ini
+.DS_Store
