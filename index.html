@@ -94,7 +94,21 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
     background:var(--chip);color:var(--chip-ink);font-size:14px;
     font-family:inherit;cursor:pointer;}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
-@media (max-width:600px){.row,.grid{grid-template-columns:1fr;}}
+@media (max-width:600px){
+  .row,.grid{grid-template-columns:1fr;}
+
+  /* ⚠ LE RESUME DU TOUR RESTE SUR DEUX COLONNES, MEME SUR TELEPHONE.
+     Ses quatre valeurs sont COURTES -- « #901 », « 50.27 s » -- et sur une
+     seule colonne elles occupaient quatre rangees pleines. Le temps au
+     tour se retrouvait pousse sous la ligne de flottaison, alors que
+     c'est le chiffre qu'on cherche en premier en piste. */
+  #relaisGrid{grid-template-columns:1fr 1fr;gap:8px 12px;}
+
+  /* Les boutons se serrent et se rangent cote a cote au lieu de prendre
+     une rangee chacun. Trois boutons empiles poussaient tout le reste
+     hors de l'ecran. */
+  #grp_relais .btn{padding:11px 12px;font-size:15px;margin-right:6px;}
+}
 
 /* =================================================================
    TABLETTE ET GRAND ECRAN : deux colonnes
@@ -170,7 +184,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v6</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v7</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -296,9 +310,9 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
   sinon il ignore le beacon et aucun tour ne sera détecté.
 </p>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
-<button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter le relais</button>
-<button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Remettre les tours à zéro</button>
+<button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter</button>
+<button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter</button>
+<button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Effacer les tours</button>
 <button type="button" class="btn btn3" id="btnSimTour" style="margin-top:0;" onclick="rlSimulerTour()">Simuler un tour</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
 </div>
