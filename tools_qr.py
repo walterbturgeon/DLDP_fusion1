@@ -42,11 +42,19 @@ def main() -> int:
             print("REFUS : l'adresse contient un fragment '#'.")
             print("        Ce script n'encode que des adresses publiques.")
             return 1
-        # Correction d'erreur haute : un QR imprime, colle sur une carte ou
-        # photographie de travers reste lisible meme abime.
-        qr = segno.make(adresse, error="h")
+        # ⚠ CORRECTION D'ERREUR MOYENNE, PAS HAUTE. La haute ajoute des
+        # modules : le QR devient plus dense, donc chaque case plus petite a
+        # taille d'image egale. Scanne A L'ECRAN, ou l'image est deja reduite
+        # par le telephone, cette densite fait echouer la lecture -- constate
+        # le 3 septembre 2026. La haute ne se justifie que pour un QR IMPRIME,
+        # qui peut se salir ou se dechirer ; un QR affiche ne s'abime pas.
+        #
+        # Et une bordure plus large : la zone calme est ce que le lecteur
+        # cherche en premier pour trouver le code. Trop mince, il ne le voit
+        # pas du tout.
+        qr = segno.make(adresse, error="m")
         sortie = ici / nom
-        qr.save(str(sortie), scale=8, border=3)
+        qr.save(str(sortie), scale=16, border=4)
         print("%-14s %s" % (nom, role))
         print("               %s" % adresse)
     return 0
