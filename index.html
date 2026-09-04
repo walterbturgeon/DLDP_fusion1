@@ -222,7 +222,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v9</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v10</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -308,14 +308,14 @@ function couleur(nom){
     <span>DRAGLOGICS</span>
   </button>
   <button type="button" class="btn" id="btnAppTrlg" style="margin-top:0;flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" onclick="appDemander('trlg')">
-    <img src="logo-traclogics.svg" alt="" width="44" height="44" style="display:block;border-radius:9px;">
-    <span>TRACLOGICS</span>
+    <img src="logo-tracklogics.svg" alt="" width="44" height="44" style="display:block;border-radius:9px;">
+    <span>TRACKLOGICS</span>
   </button>
 </div>
 <p class="small" id="appEtat" style="margin-top:10px;"></p>
 <p class="small" style="opacity:.7;margin-top:6px;">
   <b>DRAGLOGICS</b> — courses en ligne droite, jalons. Le beacon du relais est <b>ignoré</b>.<br>
-  <b>TRACLOGICS</b> — tours de piste. Le module <b>écoute</b> le beacon du relais.
+  <b>TRACKLOGICS</b> — tours de piste. Le module <b>écoute</b> le beacon du relais.
 </p>
 <p class="small" id="appAvert" class="err" style="margin-top:8px;display:none;"></p>
 </div>
@@ -344,7 +344,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <h2>Relais TRLG</h2>
 <p class="small" id="relaisNote" style="margin:0 0 10px;opacity:.75;">
   Le relais sert aux <b>tours de piste</b>. T'y connecter fait passer la page en
-  <b>TRACLOGICS</b>. ⚠ Le module de la voiture doit déjà être dans ce métier,
+  <b>TRACKLOGICS</b>. ⚠ Le module de la voiture doit déjà être dans ce métier,
   sinon il ignore le beacon et aucun tour ne sera détecté.
 </p>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -370,7 +370,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
   <div id="relaisTours" style="margin-top:14px;"></div>
 
   <!-- La table des 38 canaux : min, max, moyenne et l'ECART avec le tour
-       precedent. C'est le coeur du metier TRACLOGICS -- sans elle on voit
+       precedent. C'est le coeur du metier TRACKLOGICS -- sans elle on voit
        QUE le temps au tour, et un temps seul ne dit pas POURQUOI il a
        change. L'ecart de moyenne le dit.
        ⚠ Elle defile horizontalement plutot que de se comprimer : six
@@ -2237,7 +2237,7 @@ function dspAjouterAConfig(cfg) {
 //               il vaut 'trlg' -- parler au relais, c'est faire de la piste.
 //
 // Avant le 4 septembre 2026 il n'y en avait qu'une. Resultat : se
-// connecter au relais passait la page en TRACLOGICS pendant une seconde,
+// connecter au relais passait la page en TRACKLOGICS pendant une seconde,
 // puis la voiture relisait sa configuration et RAMENAIT tout en
 // DRAGLOGICS. La bascule paraissait ne pas marcher, alors qu'elle marchait
 // et se faisait ecraser aussitot.
@@ -2289,7 +2289,7 @@ function appAfficher() {
       av.style.display = '';
       av.innerHTML = '<b>Le module de la voiture est en DRAGLOGICS.</b> Dans ce métier il '
                    + 'ignore le beacon du relais : <b>aucun tour ne sera détecté.</b> '
-                   + 'Connecte la voiture et mets-la en TRACLOGICS.';
+                   + 'Connecte la voiture et mets-la en TRACKLOGICS.';
     } else if (appMode === 'trlg' && !connecte) {
       av.style.display = '';
       av.textContent = 'Le module de la voiture n’est pas connecté. Tant qu’il ne l’est pas, '
@@ -2308,7 +2308,7 @@ function appAfficher() {
   // des chiffres figes qui ressemblent a une panne. L'oeil cherche des
   // choses differentes dans les deux metiers.
   //
-  // TRACLOGICS cache : Chrono, Calibration, Tes passages, Passages
+  // TRACKLOGICS cache : Chrono, Calibration, Tes passages, Passages
   // archives -- tous lies au depart arrete et aux jalons de distance.
   // Il montre : le Relais, avec ses tours et la carte du parcours.
   //
@@ -2331,7 +2331,7 @@ function appAfficher() {
   // ⚠ MAIS ELLE RESTE VISIBLE QUAND LE METIER EST INCONNU. Sur un
   // telephone qui ne s'est jamais connecte a la voiture, la masquer
   // fermerait le seul chemin d'entree : pour voir le relais il faudrait
-  // etre en TRACLOGICS, et pour y etre il faudrait la voiture. UN CERCLE
+  // etre en TRACKLOGICS, et pour y etre il faudrait la voiture. UN CERCLE
   // SANS ENTREE -- le defaut du 4 septembre 2026, qu'on ne reintroduit
   // pas en corrigeant celui-ci.
   //
@@ -2522,7 +2522,7 @@ async function rlAttacher(server) {
   var b = document.getElementById('relaisBloc');
   if (b) b.style.display = '';
 
-  // ⚠ SE CONNECTER AU RELAIS FAIT BASCULER LA PAGE EN TRACLOGICS.
+  // ⚠ SE CONNECTER AU RELAIS FAIT BASCULER LA PAGE EN TRACKLOGICS.
   // Le relais n'existe que pour les tours de piste : s'y connecter est une
   // preuve suffisante du metier. Sans cela il fallait joindre la voiture
   // AVANT le relais, ce qui est impossible en piste -- la voiture est sur
