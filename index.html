@@ -222,7 +222,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v12</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v14</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -492,9 +492,57 @@ trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
 <div class="small">Connexion</div><div><b>connecte-toi pour voir</b></div>
 </div></div>
 
+<!-- ============ BUS CAN ============ -->
+<!-- ⚠ CETTE CARTE N'EST PAS `dlg-only`, ET C'EST LE POINT. Le module lit
+     le bus CAN DANS LES DEUX MÉTIERS : en TRACKLOGICS, ce sont les canaux
+     du bus qui remplissent le résumé de tour envoyé au relais. Enfermer le
+     choix du protocole dans les réglages DRAGLOGICS obligeait à repasser
+     en DRAGLOGICS pour changer de protocole — donc à quitter la piste
+     pour régler ce que la piste utilise. -->
+<div class="card" id="cardCan"><h2>Bus CAN</h2>
+<form onsubmit="return submitConfig(event)">
+
+<label for="mode">Protocole du bus CAN</label>
+<select id="mode" name="mode" onchange="syncBitrateToMode()">
+<option value="LINK">Link AEM 30-2206</option>
+<option value="FUELTECH">FuelTech -- trame GPS</option>
+<option value="VAG_WHEELSPEED">FuelTech -- vitesse de roue + jalons</option>
+<option value="HOLLEY">Holley Expander (injection vitesse)</option>
+<option value="ECUMASTER">ECUMaster GPStoCAN V2</option>
+<option value="OBD2">OBD-II standard (lit la voiture)</option>
+</select>
+
+<div id="grp_cbr">
+<label for="cbr">Débit du bus CAN</label>
+<select id="cbr" name="cbr">
+<option value="125000">125 kbit/s</option>
+<option value="250000">250 kbit/s</option>
+<option value="500000">500 kbit/s</option>
+<option value="1000000">1 Mbit/s</option>
+</select>
+<p class="small">Doit être le même que celui de la voiture. Un mauvais débit ne dit rien :
+tu ne verras simplement aucune trame. Changer de protocole remet le débit par
+défaut, tu peux le rechanger ensuite. Le mode <b>Holley Expander</b> impose
+1 Mbit/s, c'est celui du bus Dominator. Le changement prend effet tout de suite.</p>
+<p class="small"><b>En OBD-II, ce champ n'est qu'un point de départ.</b> La norme
+ISO&nbsp;15765-4 autorise <b>quatre</b> combinaisons — 500 et 250&nbsp;kbit/s,
+en identifiants 11 ou 29&nbsp;bits — et le module <b>les essaie toutes</b>
+jusqu'à ce qu'une réponde, comme un lecteur de codes du commerce. Il commence
+par le débit choisi ici. ⚠ Il <b>n'enregistre pas</b> celui qu'il trouve : la
+carte OBD-II te le dit, et c'est toi qui décides de le garder.</p>
+</div>
+
+<button class="btn" name="action" value="save" type="submit">Sauvegarder le protocole</button>
+<div id="canMsg" style="margin-top:12px;"></div>
+</form>
+</div>
+
 <!-- ⚠ CETTE CARTE N'APPARAIT QU'EN MODE CAN « OBD2 ». Une carte vide en
-     permanence ferait chercher une panne dans les autres modes. -->
-<div class="card dlg-only" id="cardObd" style="display:none">
+     permanence ferait chercher une panne dans les autres modes.
+     ⚠ ELLE N'EST PAS `dlg-only` NON PLUS : les valeurs du bus servent en
+     piste autant qu'en ligne droite. Une température d'eau qui monte se
+     lit pendant un relais, pas seulement entre deux passes. -->
+<div class="card" id="cardObd" style="display:none">
 <h2>OBD-II &mdash; lecture standard</h2>
 <div class="err">
 <b>&#9888; Ce mode ÉMET sur le bus diagnostic du véhicule.</b>
@@ -508,6 +556,7 @@ reste la seule source de la mesure. Un retard de 80&nbsp;ms vaut 3,3&nbsp;m
 d'erreur à 150&nbsp;km/h.
 </div>
 <div id="obdEtat" class="small" style="margin:10px 0;"></div>
+<div id="obdScan" style="margin:10px 0;"></div>
 <div id="obdGrid" class="grid"></div>
 </div>
 
@@ -581,29 +630,13 @@ pour le remplacer.
 </div>
 </div>
 
-<label for="mode">Mode CAN</label>
-<select id="mode" name="mode" onchange="syncBitrateToMode()">
-<option value="LINK">Link AEM 30-2206</option>
-<option value="FUELTECH">FuelTech -- trame GPS</option>
-<option value="VAG_WHEELSPEED">FuelTech -- vitesse de roue + jalons</option>
-<option value="HOLLEY">Holley Expander (injection vitesse)</option>
-<option value="ECUMASTER">ECUMaster GPStoCAN V2</option>
-<option value="OBD2">OBD-II standard (lit la voiture)</option>
-</select>
-
-<div id="grp_cbr">
-<label for="cbr">Débit du bus CAN</label>
-<select id="cbr" name="cbr">
-<option value="125000">125 kbit/s</option>
-<option value="250000">250 kbit/s</option>
-<option value="500000">500 kbit/s</option>
-<option value="1000000">1 Mbit/s</option>
-</select>
-<p class="small">Doit être le même que celui de la voiture. Un mauvais débit ne dit rien :
-tu ne verras simplement aucune trame. Changer de mode remet le débit par
-défaut, tu peux le rechanger ensuite. Le mode <b>Holley Expander</b> impose
-1 Mbit/s, c'est celui du bus Dominator. Le changement prend effet tout de suite.</p>
-</div>
+<!-- ⚠ LE PROTOCOLE CAN ET LE DÉBIT SONT SORTIS DE CETTE CARTE. Ils sont
+     maintenant dans la carte « Bus CAN », qui reste visible EN
+     TRACKLOGICS AUSSI. Le bus n'est pas une affaire de DRAGLOGICS : le
+     module le lit dans les deux métiers, et en piste ce sont ses canaux
+     qui remplissent le résumé de tour.
+     Les champs ci-dessous restent ici parce qu'ils sont propres à un
+     protocole précis, réglés une fois par voiture. -->
 
 <label for="hid">Numéro d'expander Holley — le même que côté EFI</label>
 <input id="hid" name="hid" type="number" min="0" max="2047" value="1500">
@@ -1769,9 +1802,35 @@ function majObd(o) {
       + '<br>Pistes&nbsp;: contact coupé, débit différent de 500&nbsp;kbit/s,'
       + " ou véhicule qui n'est pas sur CAN (ISO&nbsp;9141 / PWM).";
   } else {
-    e.innerHTML = 'Identifiants <b>' + o.bits + ' bits</b> &middot; '
-      + o.req + ' requêtes &middot; <b>' + o.rep + ' réponses</b> &middot; '
-      + o.to + ' sans réponse &middot; dernière il y a <b>' + o.vu + ' ms</b>';
+    e.innerHTML = 'Bus à <b>' + (o.dbit / 1000) + ' kbit/s</b>, identifiants <b>'
+      + o.bits + ' bits</b> &middot; ' + o.req + ' requêtes &middot; <b>'
+      + o.rep + ' réponses</b> &middot; ' + o.to + ' sans réponse &middot; '
+      + 'dernière il y a <b>' + o.vu + ' ms</b>';
+  }
+
+  // ---- Le balayage des quatre combinaisons ----
+  // ⚠ ON DIT QUEL DÉBIT TOURNE VRAIMENT, pas celui du réglage. Le balayage
+  // peut avoir trouvé 250 kbit/s pendant que la carte « Bus CAN » affiche
+  // encore 500 : sans cette ligne, les deux chiffres se contrediraient
+  // dans la page sans que rien n'explique lequel est le vrai.
+  var b = document.getElementById('obdScan');
+  if (b) {
+    var reglage = parseInt(document.getElementById('cbr').value, 10);
+    if (!o.lock) {
+      b.innerHTML = "<div class='err'><b>Recherche du véhicule.</b> "
+        + "La norme ISO&nbsp;15765-4 autorise <b>quatre</b> combinaisons&nbsp;: "
+        + "500 et 250&nbsp;kbit/s, en 11 ou 29 bits. Le module les essaie "
+        + "toutes, 1,5&nbsp;s chacune (" + o.scan + " sur 4 déjà essayées).</div>";
+    } else if (o.dbit !== reglage) {
+      b.innerHTML = "<div class='ok'><b>Véhicule trouvé à " + (o.dbit / 1000)
+        + " kbit/s</b>, alors que le réglage enregistré est de "
+        + (reglage / 1000) + " kbit/s.<br><br>"
+        + "Le module <b>n'a rien changé tout seul</b>. Mets le débit à "
+        + (o.dbit / 1000) + " kbit/s dans la carte <b>Bus CAN</b> et sauvegarde, "
+        + "sinon la recherche recommencera au prochain démarrage.</div>";
+    } else {
+      b.innerHTML = '';
+    }
   }
 
   // ---- Le tableau ----
@@ -1880,6 +1939,13 @@ function appliquerModeDlap(dlap) {
   // Cartes : en mode DLAP on ne garde que Connexion et Configuration.
   // Le graphique de vitesse, l'etat GPS et l'archivage n'ont aucun sens ici.
   document.querySelectorAll('.card').forEach(function (c) {
+    // ⚠ LA CARTE OBD-II EST HORS DE CE BALAYAGE. Il remet TOUTES les
+    // cartes visibles quand le module n'est pas un DLAP -- ce qui ferait
+    // apparaitre une carte OBD-II VIDE a chaque connexion, avant que
+    // refreshState() ait eu le temps de la remasquer. Une carte vide qui
+    // clignote fait chercher une panne qui n'existe pas.
+    // Sa visibilite appartient a majObd(), et a lui seul.
+    if (c.id === 'cardObd') { if (dlap) c.style.display = 'none'; return; }
     var garder = (c.id === 'connCard') || !!c.querySelector('#cfgForm');
     c.style.display = (dlap && !garder) ? 'none' : '';
   });
@@ -3486,7 +3552,17 @@ async function refreshConfig() {
 
 async function submitConfig(ev) {
   ev.preventDefault();
-  var msg = document.getElementById('cfgMsg');
+  // ⚠⚠ LE MESSAGE PART DANS LES DEUX ZONES, ET C'EST OBLIGATOIRE. Il y a
+  // maintenant deux formulaires qui appellent cette fonction : celui des
+  // réglages (carte masquée en TRACKLOGICS) et celui du bus CAN (toujours
+  // visible). Écrire dans le seul `cfgMsg` ferait qu'en TRACKLOGICS on
+  // sauvegarde le protocole et **on ne voit rien** — ni succès, ni échec.
+  // On croirait que le bouton ne marche pas, alors que tout est passé.
+  var _z = [document.getElementById('cfgMsg'), document.getElementById('canMsg')];
+  var msg = {
+    set innerHTML(v) { for (var i = 0; i < _z.length; i++) if (_z[i]) _z[i].innerHTML = v; },
+    get innerHTML()  { return _z[0] ? _z[0].innerHTML : ''; }
+  };
   // ⚠ Ne PAS exiger chrCommand : le DLAP ne l'expose pas, et l'exiger
   // bloquait toute sauvegarde chez lui. Seule CONFIG est indispensable.
   if (!chrConfig) {
