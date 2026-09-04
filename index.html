@@ -288,6 +288,29 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
   <canvas id="speedMap" style="width:100%;margin-top:14px;border-radius:10px;display:none;"></canvas>
   <div id="speedLegend" class="small" style="margin-top:6px;"></div>
   <div id="relaisTours" style="margin-top:14px;"></div>
+
+  <!-- La table des 38 canaux : min, max, moyenne et l'ECART avec le tour
+       precedent. C'est le coeur du metier TRACLOGICS -- sans elle on voit
+       QUE le temps au tour, et un temps seul ne dit pas POURQUOI il a
+       change. L'ecart de moyenne le dit.
+       ⚠ Elle defile horizontalement plutot que de se comprimer : six
+       colonnes ecrasees sur un telephone deviennent illisibles. -->
+  <div id="relaisCanaux" style="margin-top:16px;display:none;">
+    <h2 style="font-size:1em;">Canaux du tour</h2>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap;">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px 6px 0;">Canal</th>
+          <th style="text-align:right;padding:6px 10px;">Min</th>
+          <th style="text-align:right;padding:6px 10px;">Max</th>
+          <th style="text-align:right;padding:6px 10px;">Moy</th>
+          <th style="text-align:right;padding:6px 10px;">&Delta; Moy</th>
+          <th style="text-align:left;padding:6px 0 6px 10px;">Unite</th>
+        </tr></thead>
+        <tbody id="relaisTbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 </div>
 
@@ -2533,6 +2556,37 @@ function rlRendre() {
 
   var t = document.getElementById('relaisTours');
   if (t) t.innerHTML = h;
+
+  // ---- Les 38 canaux, avec l'ecart de moyenne sur le tour precedent ----
+  // ⚠ L'ECART EST CE QUI SERT. Un min/max/moyenne seul ne dit rien : c'est
+  // la comparaison avec le tour d'avant qui montre ce qui a change -- une
+  // temperature qui monte, une pression qui baisse, un regime moyen qui
+  // s'effondre. Sans le tour precedent, on affiche un tiret plutot que
+  // d'inventer une reference.
+  var tb = document.getElementById('relaisTbody');
+  var bloc = document.getElementById('relaisCanaux');
+  if (tb && lap.vals && lap.vals.length === CHANNELS.length) {
+    var lignes = '';
+    for (var k = 0; k < CHANNELS.length; k++) {
+      var ch = CHANNELS[k], v = lap.vals[k];
+      var dec = ch.txScale >= 100 ? 3 : 1;
+      var ecart = '-';
+      if (prec && prec.vals && prec.vals.length === CHANNELS.length) {
+        var dd = (v.avg - prec.vals[k].avg) / ch.txScale;
+        ecart = (dd >= 0 ? '+' : '') + dd.toFixed(dec);
+      }
+      lignes += '<tr>'
+        + '<td style="padding:5px 10px 5px 0;">' + ch.name + '</td>'
+        + '<td style="text-align:right;padding:5px 10px;">' + (v.min / ch.txScale).toFixed(dec) + '</td>'
+        + '<td style="text-align:right;padding:5px 10px;">' + (v.max / ch.txScale).toFixed(dec) + '</td>'
+        + '<td style="text-align:right;padding:5px 10px;">' + (v.avg / ch.txScale).toFixed(dec) + '</td>'
+        + '<td style="text-align:right;padding:5px 10px;opacity:.7;">' + ecart + '</td>'
+        + '<td style="padding:5px 0 5px 10px;opacity:.7;">' + ch.unit + '</td>'
+        + '</tr>';
+    }
+    tb.innerHTML = lignes;
+    if (bloc) bloc.style.display = '';
+  }
 }
 
 function rlVoir(num) {
