@@ -170,7 +170,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v5</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v6</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -299,6 +299,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
 <button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter le relais</button>
 <button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Remettre les tours à zéro</button>
+<button type="button" class="btn btn3" id="btnSimTour" style="margin-top:0;" onclick="rlSimulerTour()">Simuler un tour</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
 </div>
 <div id="relaisBloc" style="margin-top:14px;display:none;">
@@ -341,14 +342,14 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 </div>
 </div>
 
-<div class="card">
+<div class="card dlg-only">
 <h2>Mise à jour</h2>
 <p class="small">Le module ouvre un WiFi le temps de la mise à jour. Pas besoin de câble. Le Bluetooth se coupe pendant ce temps-là.</p>
 <button type="button" class="btn btn2" id="btnOta" style="margin-top:0;" onclick="startOta()">Passer en mise à jour</button>
 <div id="otaMsg" style="margin-top:12px;"></div>
 </div>
 
-<div class="card large"><h2>Vitesse</h2>
+<div class="card large dlg-only"><h2>Vitesse</h2>
 <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
 <span id="spd" style="font-size:42px;font-weight:bold;">--</span>
 <span class="small">km/h</span>
@@ -431,11 +432,11 @@ trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
 <div id="histTable" style="margin-top:12px;overflow-x:auto;"></div>
 </div>
 
-<div class="card"><h2>État</h2><div class="grid" id="etatGrid">
+<div class="card dlg-only"><h2>État</h2><div class="grid" id="etatGrid">
 <div class="small">Connexion</div><div><b>connecte-toi pour voir</b></div>
 </div></div>
 
-<div class="card"><h2>Réglages</h2>
+<div class="card dlg-only"><h2>Réglages</h2>
 <form id="cfgForm" onsubmit="return submitConfig(event)">
 
 <div id="fwBanner" class="small" style="display:none;padding:10px 12px;border-radius:8px;
@@ -2890,6 +2891,13 @@ function rlRendre() {
   var actifs = LIMIT_FLAGS.filter(function (_, i) { return (lap.flags & (1 << i)) !== 0; });
 
   var h = '';
+  // ⚠ UN TOUR SIMULE SE DIT, EN HAUT ET EN CLAIR. Melange aux vrais sans
+  // etiquette, il fausserait le meilleur temps, les ecarts et le jugement
+  // qu'on porte sur la voiture.
+  if (lap.simule) {
+    h += '<div class="err" style="margin-bottom:10px;"><b>Tour simulé.</b> '
+       + 'Aucune donnée réelle, rien n’a été envoyé à la voiture.</div>';
+  }
   if (actifs.length) h += '<div class="err">⚠ ' + actifs.join(' · ') + '</div>';
   if (lap.dMax != null) {
     // ⚠ 65535 EST UNE SATURATION, PAS UNE DISTANCE. Le champ est sur 16
@@ -2916,7 +2924,7 @@ function rlRendre() {
     var l = rlLaps[i];
     h += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(128,128,128,.2);cursor:pointer;"'
        + ' onclick="rlVoir(' + l.num + ')">'
-       + '<span>#' + l.num + (l === best ? ' ★' : '') + '</span>'
+       + '<span>#' + l.num + (l === best ? ' ★' : '') + (l.simule ? ' <i>simulé</i>' : '') + '</span>'
        + '<span>' + rlDuree(l.dureeMs) + '</span></div>';
   }
   h += '</div>';
@@ -3010,6 +3018,73 @@ async function rlResetTours() {
   } catch (e) {
     rlEtat('Page effacée, mais la commande n’est pas partie : ' + e.message);
   }
+}
+
+// =====================================================================
+// SIMULER UN TOUR, dans la page seule
+// =====================================================================
+// Fabrique un tour complet -- resume, 38 canaux, trace coloree -- sans
+// aucun materiel. Sert a montrer et a verifier l'affichage de piste.
+//
+// ⚠⚠ UN TOUR SIMULE DOIT ETRE RECONNAISSABLE AU PREMIER COUP D'OEIL.
+// Il est numerote a partir de 900, loin des vrais, et la page l'annonce
+// en clair. Un tour invente qu'on prendrait pour un vrai fausserait le
+// meilleur temps, les ecarts, et le jugement qu'on porte sur la voiture.
+//
+// ⚠ IL NE PART PAS DANS LA VOITURE. Rien n'est emis : c'est un dessin,
+// pas une mesure. La touche 't' du port serie, elle, rejoue un VRAI tour
+// enregistre en passant par la radio -- les deux ne servent pas a la
+// meme chose et ne doivent pas se confondre.
+var rlSimNum = 900;
+
+function rlSimulerTour() {
+  // Un trace en forme de circuit, avec des courbes lentes et des lignes
+  // droites rapides -- une vitesse constante ne montrerait rien de la
+  // carte de chaleur.
+  var pts = [], N = 150;
+  for (var i = 0; i < N; i++) {
+    var a = i / N * 2 * Math.PI;
+    var rx = 210 + 40 * Math.cos(3 * a);
+    var ry = 105 + 30 * Math.sin(2 * a);
+    var dx = Math.round(rx * Math.cos(a));
+    var dy = Math.round(ry * Math.sin(a));
+    // Rapide dans les grandes courbes, lent dans les serres.
+    var v = 55 + 75 * Math.pow(Math.abs(Math.cos(a + 0.4)), 1.5);
+    pts.push({ dx: dx, dy: dy, kmh: Math.round(v) });
+  }
+
+  // Les 38 canaux : des valeurs plausibles et liees entre elles. Des
+  // nombres au hasard donneraient une table qui ne veut rien dire.
+  var vals = [];
+  for (var k = 0; k < CHANNELS.length; k++) {
+    var ch = CHANNELS[k];
+    var base = [7200, 180, 90, 101, 78, 42, 25, 18, 88, 95][k % 10];
+    var mn = base * 0.35, mx = base * 1.0, av = base * 0.72;
+    // Un peu de variation d'un tour a l'autre, pour que l'ecart de
+    // moyenne affiche quelque chose de vivant.
+    var d = 1 + (Math.random() - 0.5) * 0.06;
+    vals.push({ min: Math.round(mn * ch.txScale), max: Math.round(mx * ch.txScale),
+                avg: Math.round(av * d * ch.txScale) });
+  }
+
+  var lap = {
+    num: rlSimNum++,
+    dureeMs: Math.round(52000 + (Math.random() - 0.5) * 4000),
+    source: 1,                       // ligne GPS, comme un bon tour
+    vals: vals,
+    flags: 0,
+    oLat: 45.4067702, oLon: -72.7509981,
+    dMax: 245,
+    simule: true
+  };
+  rlTraces.set(lap.num, { parts: [pts], nb: 1, intervalMs: 350 });
+  rlLaps.push(lap);
+  rlLapVu = lap;
+
+  var b = document.getElementById('relaisBloc');
+  if (b) b.style.display = '';
+  rlRendre();
+  rlEtat('Tour simulé #' + lap.num + ' — aucune donnée réelle, rien n’a été envoyé.');
 }
 
 function rlVoir(num) {
