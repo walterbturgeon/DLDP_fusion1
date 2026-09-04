@@ -188,17 +188,6 @@ function couleur(nom){
 }
 </script>
 
-<div class="card" id="connCard">
-<h2>Connexion</h2>
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-<button type="button" class="btn" id="btnConnect" style="margin-top:0;" onclick="connect()">Connecter</button>
-<span id="connStatus" class="small">Pas connecté</span>
-</div>
-<div id="bleUnsupported" class="err small" style="margin-top:12px;display:none;">
-Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhone, il faut l'app <b>Bluefy</b> — un navigateur tiers de l'App Store, pas un produit Apple.
-</div>
-</div>
-
 <!-- =================================================================
      [FUSION] L'INTERRUPTEUR DE MÉTIER
      =================================================================
@@ -214,15 +203,32 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <div class="card" id="grp_app" style="display:none;">
 <h2>Métier de l'appareil</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-  <button type="button" class="btn" id="btnAppDlg"  style="margin-top:0;flex:1;" onclick="appDemander('dlg')">DRAGLOGICS</button>
-  <button type="button" class="btn" id="btnAppTrlg" style="margin-top:0;flex:1;" onclick="appDemander('trlg')">TRLG</button>
+  <button type="button" class="btn" id="btnAppDlg" style="margin-top:0;flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" onclick="appDemander('dlg')">
+    <img src="logo-draglogics.svg" alt="" width="44" height="44" style="display:block;border-radius:9px;">
+    <span>DRAGLOGICS</span>
+  </button>
+  <button type="button" class="btn" id="btnAppTrlg" style="margin-top:0;flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" onclick="appDemander('trlg')">
+    <img src="logo-traclogics.svg" alt="" width="44" height="44" style="display:block;border-radius:9px;">
+    <span>TRACLOGICS</span>
+  </button>
 </div>
 <p class="small" id="appEtat" style="margin-top:10px;"></p>
 <p class="small" style="opacity:.7;margin-top:6px;">
   <b>DRAGLOGICS</b> — courses en ligne droite, jalons. Le beacon du relais est <b>ignoré</b>.<br>
-  <b>TRLG</b> — tours de piste. Le module <b>écoute</b> le beacon du relais.
+  <b>TRACLOGICS</b> — tours de piste. Le module <b>écoute</b> le beacon du relais.
 </p>
 <p class="small" id="appAvert" class="err" style="margin-top:8px;display:none;"></p>
+</div>
+
+<div class="card" id="connCard">
+<h2>Connexion</h2>
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+<button type="button" class="btn" id="btnConnect" style="margin-top:0;" onclick="connect()">Connecter</button>
+<span id="connStatus" class="small">Pas connecté</span>
+</div>
+<div id="bleUnsupported" class="err small" style="margin-top:12px;display:none;">
+Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhone, il faut l'app <b>Bluefy</b> — un navigateur tiers de l'App Store, pas un produit Apple.
+</div>
 </div>
 
 <!-- =================================================================
@@ -2725,6 +2731,23 @@ async function submitConfig(ev) {
 // que les champs existent deja. Le groupe reste masque tant qu'aucun
 // firmware n'annonce la cle `dsp0`.
 dspConstruireBlocs();
+
+// [FUSION] L'INTERRUPTEUR EST MONTRÉ DÈS LE CHARGEMENT, avant toute
+// connexion, dès qu'on a déjà vu un module fusionné une fois.
+//
+// ⚠ SANS CELA, LA CARTE DU HAUT SERAIT VIDE AU DÉMARRAGE. L'utilisateur
+// ouvre la page en piste, voit une page qui ne parle plus de métier, et
+// croit avoir ouvert la mauvaise. Le métier retenu s'affiche donc tout de
+// suite, avec ses boutons éteints et la raison écrite dessous.
+//
+// La mémoire ne sert QU'À AFFICHER. Dès qu'un module répond,
+// appliquerCapacites() écrase cette valeur par celle du module, qui est le
+// seul maître.
+if (appMode !== null) {
+  var _ga = document.getElementById('grp_app');
+  if (_ga) _ga.style.display = '';
+}
+appAfficher();
 
 if (!navigator.bluetooth) document.getElementById('bleUnsupported').style.display = 'block';
 

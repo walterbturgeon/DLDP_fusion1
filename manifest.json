@@ -1,6 +1,8 @@
 {
   "name": "DRAGLOG + TRLG",
   "short_name": "DL+TRLG",
+  "description": "Courses en ligne droite et tours de piste, sur un meme appareil.",
+  "id": "/DRAGLOG_TRLG/",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -8,8 +10,8 @@
   "theme_color": "#111111",
   "orientation": "portrait",
   "icons": [
-    { "src": "icon-192.webp", "sizes": "192x192", "type": "image/webp", "purpose": "any" },
-    { "src": "icon-512.webp", "sizes": "512x512", "type": "image/webp", "purpose": "any" },
-    { "src": "logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

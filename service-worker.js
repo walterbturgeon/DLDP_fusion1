@@ -20,7 +20,15 @@
 // une simple copie de fichier.
 const PREFIX = 'draglog-trlg-';
 const CACHE = PREFIX + 'v1';   // v1 : fusion DRAGLOGICS + TRLG, interrupteur de metier, deuxieme connexion au relais
-const ASSETS = ['./', './index.html', './manifest.json', './logo.svg', './icon-192.webp', './icon-512.webp'];
+// ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
+// tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
+// service worker. Et sans service worker installe, Chrome n'offre jamais
+// d'installer la page comme application sur Android.
+//
+// Les deux icones s'appelaient `.webp` alors que ce sont des PNG (verifie le
+// 3 septembre 2026 : les octets commencent par 89 50 4E 47). Renommees, et
+// le manifeste declare maintenant le bon type.
+const ASSETS = ['./', './index.html', './manifest.json', './logo.svg', './logo-draglogics.svg', './logo-traclogics.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (ev) => {
   ev.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
