@@ -287,7 +287,16 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 </div>
 <div id="relaisBloc" style="margin-top:14px;display:none;">
   <div class="grid" id="relaisGrid"></div>
-  <canvas id="speedMap" style="width:100%;margin-top:14px;border-radius:10px;display:none;"></canvas>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;">
+    <label class="small" style="display:flex;align-items:center;gap:6px;margin:0;font-weight:normal;">
+      <input type="checkbox" id="satOn" onchange="rlSatBascule()" style="width:auto;margin:0;">
+      Fond satellite
+    </label>
+    <span id="satEtat" class="small" style="opacity:.7;"></span>
+  </div>
+  <canvas id="speedMap" style="width:100%;margin-top:10px;border-radius:10px;display:none;touch-action:none;cursor:crosshair;"
+          onpointerdown="rlToucher(event)" onpointermove="if(event.buttons)rlToucher(event)"></canvas>
+  <div id="pointInfo" class="small" style="margin-top:8px;min-height:1.2em;"></div>
   <div id="speedLegend" class="small" style="margin-top:6px;"></div>
   <div id="relaisTours" style="margin-top:14px;"></div>
 
@@ -2507,6 +2516,17 @@ function rlDessinerTrace(num) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, w, h);
 
+  // Le fond satellite, dessine EN PREMIER pour passer sous le trace.
+  // ⚠ Il n'est dessine que s'il correspond EXACTEMENT au cadrage courant.
+  // Une image d'un autre cadrage placerait le trace a cote de la piste, et
+  // ce decalage ne se verrait pas : on croirait la voiture passee dans le
+  // gazon. Mieux vaut aucun fond qu'un fond decale.
+  if (rlSatImg && rlSatCle === rlCadrageCle(num, w, h)) {
+    g.globalAlpha = 0.85;
+    g.drawImage(rlSatImg, 0, 0, w, h);
+    g.globalAlpha = 1;
+  }
+
   var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
   var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
   var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
@@ -2527,6 +2547,25 @@ function rlDessinerTrace(num) {
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
   g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
 
+  // Le point touché, redessiné par-dessus le tracé.
+  if (rlPointVu != null && rlPointVu >= 0 && rlPointVu < pts.length) {
+    var pv = pts[rlPointVu];
+    g.beginPath();
+    g.arc(X(pv.dx), Y(pv.dy), 9, 0, Math.PI * 2);
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke();
+    g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
+  }
+
+  // ⚠ ON GARDE LA PROJECTION POUR LE TOUCHER. Sans elle, il faudrait la
+  // recalculer a chaque doigt pose -- et la moindre difference entre les
+  // deux calculs designerait un point voisin de celui qu'on a touche.
+  rlProj = { pts: pts, X: X, Y: Y, w: w, h: h };
+
+  // ⚠ ON NE RECHARGE LE FOND QUE SI LE CADRAGE A CHANGE. Sans ce test,
+  // l'image se rechargerait a chaque redessin -- et comme son arrivee
+  // declenche un redessin, on tournerait en boucle sur le reseau.
+  if (rlSatVoulu && rlSatCle !== rlCadrageCle(num, w, h)) rlSatCharger();
+
   // ⚠ ON DIT LES MORCEAUX MANQUANTS. Un tracé incomplet ressemble à un
   // tracé complet d'un tour plus court : sans ce compte, on lirait une
   // trajectoire tronquée comme une vraie.
@@ -2535,8 +2574,186 @@ function rlDessinerTrace(num) {
   if (lg) {
     lg.innerHTML = 'Vert = lent, rouge = rapide (' + vmin + ' à ' + vmax + ' km/h). '
                  + pts.length + ' points'
-                 + (manque > 0 ? ' — <b>' + manque + ' morceau(x) manquant(s)</b>, tracé incomplet.' : '');
+                 + (manque > 0 ? ' — <b>' + manque + ' morceau(x) manquant(s)</b>, tracé incomplet.' : '')
+                 + '<br>Touche le tracé pour lire la vitesse en un point.';
   }
+  rlAfficherPoint();
+}
+
+// =====================================================================
+// TOUCHER LE TRACE POUR LIRE LA VITESSE EN UN POINT
+// =====================================================================
+// ⚠ ON CHERCHE LE POINT LE PLUS PROCHE EN PIXELS, PAS EN METRES. C'est
+// ce que l'oeil et le doigt voient. En metres, deux portions de piste
+// superposees a l'ecran mais eloignees sur le terrain donneraient un
+// point qui n'est pas celui qu'on montre du doigt.
+//
+// ⚠ ET ON POSE UNE LIMITE DE DISTANCE. Un doigt loin du trace ne doit
+// rien selectionner : sans ce seuil, toucher le coin vide de la carte
+// designerait quand meme un point, et on lirait une vitesse pour un
+// endroit ou la voiture n'est jamais passee.
+var rlProj = null;
+var rlPointVu = null;
+
+// =====================================================================
+// FOND SATELLITE
+// =====================================================================
+// ⚠ GOOGLE MAPS EXIGE UNE CLE D'API ET UN COMPTE DE FACTURATION pour ses
+// tuiles satellite. Sans clé, l'image ne charge pas et RIEN ne l'explique
+// à l'écran -- on croirait la fonction cassée. On utilise donc une source
+// sans clé, l'imagerie mondiale d'Esri, qui répond directement.
+//
+// Pour passer à Google plus tard, il suffit de remplacer `rlSatUrl()` par
+// l'appel de l'API Static Maps avec ta clé. Le reste ne change pas.
+//
+// ⚠ L'IMAGE EST DEMANDEE POUR LE CADRAGE EXACT DU TRACE. Une image d'un
+// autre cadrage placerait la piste à côté du tracé, et ce décalage ne se
+// verrait PAS -- on croirait la voiture passée dans le gazon. La clé de
+// cadrage garantit qu'on ne dessine jamais une image qui ne correspond
+// plus.
+var rlSatVoulu = false;
+var rlSatImg   = null;
+var rlSatCle   = '';
+
+function rlCadrageCle(num, w, h) {
+  var t = rlTraces.get(num);
+  var n = t ? rlTraceEntiere(t).length : 0;
+  return num + '|' + n + '|' + w + 'x' + h;
+}
+
+function rlSatUrl(sud, ouest, nord, est, w, h) {
+  // Imagerie mondiale d'Esri : une seule requête, pas de clé.
+  return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export'
+       + '?bbox=' + ouest + ',' + sud + ',' + est + ',' + nord
+       + '&bboxSR=4326&imageSR=3857&size=' + w + ',' + h
+       + '&format=png&transparent=false&f=image';
+}
+
+function rlSatEtat(txt) {
+  var e = document.getElementById('satEtat');
+  if (e) e.textContent = txt;
+}
+
+function rlSatBascule() {
+  var cb = document.getElementById('satOn');
+  rlSatVoulu = cb ? cb.checked : false;
+  if (!rlSatVoulu) {
+    rlSatImg = null; rlSatCle = '';
+    rlSatEtat('');
+    if (rlLapVu) rlDessinerTrace(rlLapVu.num);
+    return;
+  }
+  rlSatCharger();
+}
+
+function rlSatCharger() {
+  if (!rlSatVoulu || !rlLapVu || !rlProj) return;
+  var lap = rlLapVu;
+  if (lap.oLat == null || (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) {
+    // ⚠ SANS ORIGINE VALIDE, AUCUN FOND. On ne peut pas savoir OU s'est
+    // couru le tour : poser une image quelconque dessous serait un mensonge.
+    rlSatEtat('Position du tour inconnue — pas de fond possible.');
+    return;
+  }
+  var pts = rlProj.pts;
+  var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
+  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+
+  // Le tracé est centré avec 24 px de marge et une échelle unique. On
+  // reproduit EXACTEMENT ce cadrage en mètres, sinon l'image et le tracé
+  // ne se superposeraient pas.
+  var w = rlProj.w, h = rlProj.h, pad = 24;
+  var s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1), (h - 2 * pad) / Math.max(maxY - minY, 1));
+  var demiL = w / (2 * s), demiH = h / (2 * s);
+  var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+
+  var R = 6371000, rad = Math.PI / 180;
+  function lat(y) { return lap.oLat + (y / R) / rad; }
+  function lon(x) { return lap.oLon + (x / (R * Math.cos(lap.oLat * rad))) / rad; }
+
+  var url = rlSatUrl(lat(cy - demiH), lon(cx - demiL), lat(cy + demiH), lon(cx + demiL),
+                     Math.round(w), Math.round(h));
+  var cle = rlCadrageCle(lap.num, w, h);
+
+  rlSatEtat('Chargement du fond...');
+  var im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = function () {
+    rlSatImg = im; rlSatCle = cle;
+    rlSatEtat('');
+    if (rlLapVu) rlDessinerTrace(rlLapVu.num);
+  };
+  // ⚠ UN ECHEC SE DIT. Sans ce message, une case cochée sans image
+  // ressemblerait à une fonction cassée, ou pire, à un fond qu'on croit
+  // présent alors qu'il n'y en a pas.
+  im.onerror = function () {
+    rlSatImg = null; rlSatCle = '';
+    rlSatEtat('Fond satellite indisponible (pas de réseau ?).');
+    if (rlLapVu) rlDessinerTrace(rlLapVu.num);
+  };
+  im.src = url;
+}
+
+function rlToucher(ev) {
+  if (!rlProj || !rlLapVu) return;
+  var c = document.getElementById('speedMap');
+  if (!c) return;
+  var r = c.getBoundingClientRect();
+  var px = (ev.clientX != null ? ev.clientX : 0) - r.left;
+  var py = (ev.clientY != null ? ev.clientY : 0) - r.top;
+
+  var best = -1, bestD = 1e9;
+  for (var i = 0; i < rlProj.pts.length; i++) {
+    var dx = rlProj.X(rlProj.pts[i].dx) - px;
+    var dy = rlProj.Y(rlProj.pts[i].dy) - py;
+    var d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  // 30 px de tolerance : assez large pour un doigt, assez serre pour ne
+  // pas repondre quand on touche a cote.
+  rlPointVu = (Math.sqrt(bestD) <= 30) ? best : null;
+  rlDessinerTrace(rlLapVu.num);
+}
+
+function rlAfficherPoint() {
+  var e = document.getElementById('pointInfo');
+  if (!e) return;
+  if (rlPointVu == null || !rlProj) { e.innerHTML = ''; return; }
+  var p = rlProj.pts[rlPointVu];
+  var n = rlProj.pts.length;
+  var t = rlTraces.get(rlLapVu.num);
+  var interv = (t && t.intervalMs) ? t.intervalMs : 0;
+
+  // ⚠ L'INSTANT EST APPROXIMATIF ET ON LE DIT. Les points sont espaces
+  // d'un intervalle NOMINAL ; si des morceaux manquent, le compte de
+  // points ne correspond plus au temps ecoule. Afficher une seconde
+  // precise laisserait croire a une mesure qu'on n'a pas.
+  var s = '<b>' + p.kmh + ' km/h</b> &nbsp; point ' + (rlPointVu + 1) + ' / ' + n;
+  if (interv) s += ' &nbsp; environ ' + ((rlPointVu * interv) / 1000).toFixed(1) + ' s après le départ';
+
+  // La position reelle, si l'origine du tour est connue.
+  var geo = rlPointGeo(p);
+  if (geo) {
+    s += '<br><a href="https://www.google.com/maps?q=' + geo.lat.toFixed(6) + ',' + geo.lon.toFixed(6)
+       + '" target="_blank" rel="noopener">voir ce point sur la carte</a>';
+  }
+  e.innerHTML = s;
+}
+
+// Repasse d'un point du trace (metres depuis l'origine) a une latitude et
+// une longitude. C'est l'INVERSE exact de la projection du firmware :
+//   x = (lon - refLon) * pi/180 * cos(refLat) * R
+//   y = (lat - refLat) * pi/180 * R
+// ⚠ Sans origine valide, on ne rend RIEN plutot qu'une position inventee.
+function rlPointGeo(p) {
+  var lap = rlLapVu;
+  if (!lap || lap.oLat == null || lap.oLon == null) return null;
+  if (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4) return null;
+  var R = 6371000, rad = Math.PI / 180;
+  var lat = lap.oLat + (p.dy / R) / rad;
+  var lon = lap.oLon + (p.dx / (R * Math.cos(lap.oLat * rad))) / rad;
+  return { lat: lat, lon: lon };
 }
 
 function rlDuree(ms) { return (ms / 1000).toFixed(2) + ' s'; }
