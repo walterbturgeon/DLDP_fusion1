@@ -170,7 +170,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v4</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v5</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -2175,7 +2175,23 @@ function dspAjouterAConfig(cfg) {
 // mémoire, la page ne saurait pas quoi montrer tant que la voiture n'est
 // pas à portée. La mémoire sert d'affichage, jamais d'autorité -- dès que
 // la voiture répond, c'est elle qui a raison.
+// ⚠ DEUX NOTIONS DISTINCTES, ET LES CONFONDRE FAIT DES DEGATS.
+//
+//   appMode   = le metier REEL du module, tel que la voiture le declare.
+//               C'est lui qui commande les boutons de l'interrupteur : ils
+//               doivent montrer ce que le module EST, pas ce qu'on regarde.
+//   pageMode  = ce que la PAGE affiche. Tant que le relais est connecte,
+//               il vaut 'trlg' -- parler au relais, c'est faire de la piste.
+//
+// Avant le 4 septembre 2026 il n'y en avait qu'une. Resultat : se
+// connecter au relais passait la page en TRACLOGICS pendant une seconde,
+// puis la voiture relisait sa configuration et RAMENAIT tout en
+// DRAGLOGICS. La bascule paraissait ne pas marcher, alors qu'elle marchait
+// et se faisait ecraser aussitot.
 var appMode = null;          // 'dlg' | 'trlg' | null si jamais vu
+var rlConnecte = false;      // le relais est-il connecte en ce moment
+
+function pageMode() { return rlConnecte ? 'trlg' : appMode; }
 try { appMode = localStorage.getItem('dl_app_mode'); } catch (e) {}
 
 function appAfficher() {
@@ -2210,7 +2226,18 @@ function appAfficher() {
   // relais. Le dire AVANT que l'utilisateur parte en piste vaut mieux que
   // de le lui laisser découvrir là-bas.
   if (av) {
-    if (appMode === 'trlg' && !connecte) {
+    // ⚠⚠ L'AVERTISSEMENT LE PLUS IMPORTANT DE LA PAGE.
+    // Le relais est connecte, mais la VOITURE est restee en DRAGLOGICS :
+    // dans ce metier elle IGNORE le beacon. Aucun tour ne peut naitre,
+    // jamais. La page montre pourtant tout l'affichage de piste, et on
+    // attendrait un premier tour qui ne viendrait pas -- en cherchant la
+    // panne du cote du relais, ou de la radio, ou de la detection.
+    if (rlConnecte && appMode === 'dlg') {
+      av.style.display = '';
+      av.innerHTML = '<b>Le module de la voiture est en DRAGLOGICS.</b> Dans ce métier il '
+                   + 'ignore le beacon du relais : <b>aucun tour ne sera détecté.</b> '
+                   + 'Connecte la voiture et mets-la en TRACLOGICS.';
+    } else if (appMode === 'trlg' && !connecte) {
       av.style.display = '';
       av.textContent = 'Le module de la voiture n’est pas connecté. Tant qu’il ne l’est pas, '
                      + 'le métier ne peut pas revenir à DRAGLOGICS — le relais n’a pas ce pouvoir.';
@@ -2237,7 +2264,8 @@ function appAfficher() {
   // servent a juger si le module va bien, quel que soit le metier -- et
   // le Metier doit rester atteignable, sinon il n'y a plus de marche
   // arriere.
-  var trlg = (appMode === 'trlg');
+  // ⚠ L'AFFICHAGE SUIT LE RELAIS, LES BOUTONS SUIVENT LA VOITURE.
+  var trlg = (pageMode() === 'trlg');
 
   // ⚠ LA CARTE DU RELAIS RESTE TOUJOURS ATTEIGNABLE.
   // Elle etait masquee hors du mode TRACLOGICS. Sur un telephone qui ne
@@ -2384,6 +2412,11 @@ async function relaisConnecter() {
     rlQuitte = false;
     rlDevice.addEventListener('gattserverdisconnected', function () {
       rlCmdChar = null;
+      // ⚠ ON NE BAISSE PAS LE DRAPEAU ICI. Le relais coupe son BLE ENTRE
+      // LES TOURS, volontairement : une coupure est normale et la page se
+      // rebranche seule. Repasser en DRAGLOGICS a chaque coupure ferait
+      // clignoter tout l'affichage vingt fois par seance.
+      // Seule une deconnexion DEMANDEE baisse le drapeau.
       if (!rlQuitte) { rlBoutons(false); rlReconnexion(); }
       else { rlBoutons(false); rlEtat('Déconnecté du relais.'); }
     });
@@ -2437,11 +2470,14 @@ async function rlAttacher(server) {
   // AVANT le relais, ce qui est impossible en piste -- la voiture est sur
   // le circuit, le telephone est au bord de la ligne.
   //
-  // ⚠ CE N'EST QU'UN AFFICHAGE, PAS UNE DECISION. Le maitre reste dans la
-  // voiture : des qu'elle repond, appliquerCapacites() ecrase cette valeur
-  // par la sienne. La page ne change JAMAIS le metier du module toute seule.
-  appMode = 'trlg';
-  try { localStorage.setItem('dl_app_mode', 'trlg'); } catch (e) {}
+  // ⚠ ON NE TOUCHE PAS A `appMode`. Le metier du module appartient a la
+  // voiture, et elle seule le declare. On leve un drapeau qui dit « on
+  // regarde la piste » -- c'est l'AFFICHAGE qui bascule, pas le module.
+  //
+  // C'est cette separation qui a manque : avant, la connexion au relais
+  // ecrivait dans `appMode`, et la voiture le ramenait a sa valeur des la
+  // relecture suivante. La bascule paraissait ne pas marcher.
+  rlConnecte = true;
   appAfficher();
   rlBoutons(true);
 }
@@ -2474,6 +2510,7 @@ function relaisDeconnecter() {
     if (rlDevice && rlDevice.gatt && rlDevice.gatt.connected) rlDevice.gatt.disconnect();
   } catch (e) {}
   rlCmdChar = null;
+  rlConnecte = false;   // l'affichage revient au metier declare par la voiture
   rlBoutons(false);
   var erd = document.getElementById('rlVer');
   if (erd) erd.textContent = 'relais : non connecté';

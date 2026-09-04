@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v4';   // v4 : prefixe du nom BLE corrige en CAR
+const CACHE = PREFIX + 'v5';   // v5 : le relais commande l'affichage tant qu'il est connecte
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
