@@ -221,6 +221,44 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      etre oublie, il change a chaque build.
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
+<!-- =====================================================================
+     POINT DE RETOUR  --  comment revenir en arriere
+     =====================================================================
+     ⚠ CE BLOC EST COLLE A LA VERSION, ET PAS DANS UN FICHIER A PART. Le
+     jour ou il faut reculer, on est au bord de la piste et on n'a pas le
+     temps de chercher ou c'est ecrit. Le premier endroit qu'on ouvre est
+     la page, a la ligne de la version.
+
+     Etat de repli, marque par une etiquette git dans ce depot :
+
+         retour-page-fusion-v11
+
+     C'est la DERNIERE PAGE PUBLIEE SUR GITHUB ET REELLEMENT UTILISEE :
+     les deux metiers, la bascule par le relais, la heat map, les unites
+     metriques ou imperiales. Elle ne connait NI le protocole OBD-II, NI
+     la carte « Bus CAN » sortie des reglages.
+
+     Pour y revenir :
+         git checkout retour-page-fusion-v11 -- index.html service-worker.js
+     puis republier. On REVIENT AUX FICHIERS, on ne deplace pas la
+     branche : l'historique de tout ce qui a suivi reste en place.
+
+     ⚠ APRES TOUT RETOUR, BAISSER AUSSI `CACHE` DANS service-worker.js.
+     Le service worker sert la version en cache tant que le nom du cache
+     ne change pas : on republierait l'ancienne page et le navigateur
+     continuerait de servir la nouvelle, sans qu'aucun message ne le
+     dise. Le `git checkout` ci-dessus reprend les deux fichiers ensemble
+     pour cette raison precise.
+
+     Ce que v14 ajoute au-dessus du repli :
+       v12  panneau OBD-II, 12 parametres, accroche au NUMERO DE PID
+       v13  carte « Bus CAN » sortie des reglages, visible dans les DEUX
+            metiers ; message de sauvegarde envoye aux deux endroits
+       v14  balayage des 4 combinaisons d'ISO 15765-4
+
+     ⚠ NON EPROUVE SUR UN VRAI VEHICULE au moment ou ces lignes sont
+     ecrites : l'OBD-II n'a jamais parle a un calculateur.
+     ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
   <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v14</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
