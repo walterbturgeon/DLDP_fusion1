@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v7';   // v7 : mise en page telephone et tablette
+const CACHE = PREFIX + 'v8';   // v8 : habillage -- filets de marque, capitales espacees, angles adoucis
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
@@ -31,7 +31,7 @@ const CACHE = PREFIX + 'v7';   // v7 : mise en page telephone et tablette
 // Les deux icones s'appelaient `.webp` alors que ce sont des PNG (verifie le
 // 3 septembre 2026 : les octets commencent par 89 50 4E 47). Renommees, et
 // le manifeste declare maintenant le bon type.
-const ASSETS = ['./', './index.html', './manifest.json', './logo.svg', './logo-draglogics.svg', './logo-traclogics.svg', './icon-192.png', './icon-512.png'];
+const ASSETS = ['./', './index.html', './index_classique.html', './manifest.json', './logo.svg', './logo-draglogics.svg', './logo-traclogics.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (ev) => {
   ev.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

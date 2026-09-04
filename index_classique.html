@@ -30,12 +30,6 @@
   --info-bg:#e8f1eb; --info-line:#a8ccb5;
   --grid:#dddde3;    --zero:#e8cfae;
   --ombre:0 1px 3px rgba(0,0,0,.08);
-  /* ⚠ LA MARQUE EST DISTINCTE DE L'ACCENT ET DU DANGER. Le rouge du logo
-     sert au filet des titres et au bouton principal ; l'accent vert reste
-     aux liens et aux etats valides, le rouge d'alerte reste aux erreurs.
-     Les confondre ferait qu'un titre ressemble a une alerte -- et une
-     alerte cesserait d'etre remarquee. */
-  --marque:#c8102e;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme=light]){
@@ -49,7 +43,6 @@
     --note-bg:#2c2616;--note-line:#5c4d2a;--note-ink:#e8c87a;
     --info-bg:#16281f;--info-line:#2c4a38;
     --grid:#2a2a33;   --zero:#4a3d28;
-    --marque:#e8394f;
     --ombre:0 1px 3px rgba(0,0,0,.5);
   }
 }
@@ -65,10 +58,6 @@
   --info-bg:#16281f;--info-line:#2c4a38;
   --grid:#2a2a33;   --zero:#4a3d28;
   --ombre:0 1px 3px rgba(0,0,0,.5);
-  /* ⚠ LE TROISIEME ETAT DU THEME A BESOIN DE SA VARIABLE, LUI AUSSI.
-     Il etait oublie : quelqu'un qui FORCE le mode sombre aurait vu les
-     filets de titre disparaitre, sans rien pour l'expliquer. */
-  --marque:#e8394f;
 }
 
 *{box-sizing:border-box;}
@@ -77,59 +66,32 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
      background:var(--bg);color:var(--ink);
      -webkit-text-size-adjust:100%;}
 h1{font-size:24px;}
-
-/* =================================================================
-   [LUXE] TITRES DE CARTE, EN CAPITALES ESPACEES
-   =================================================================
-   ⚠ L'ESPACEMENT RESTE MODERE. Les tableaux de bord d'habitacle
-   espacent beaucoup leurs capitales, et ca fait cher a l'oeil -- mais
-   sous 13 px chaque lettre s'isole et le mot cesse d'etre une forme
-   qu'on reconnait d'un coup. On monte donc la taille AVANT d'espacer.
-   ================================================================= */
-h2{font-size:15px;margin:0 0 14px 0;letter-spacing:.14em;
-   text-transform:uppercase;font-weight:700;color:var(--ink2);}
+h2{font-size:18px;margin:0 0 10px 0;letter-spacing:-.01em;}
 h3{color:var(--ink);}
 a{color:var(--accent);}
-
-/* ⚠ ANGLES LEGEREMENT ARRONDIS, PAS FRANCHEMENT RONDS. A 14 px la carte
-   ressemble a une bulle d'application ; a 0 elle devient un tableau. 10
-   px se lit comme un objet pose, ce qui est le but. */
-.card{background:var(--card);padding:18px;border-radius:10px;
+.card{background:var(--card);padding:16px;border-radius:14px;
       border:1px solid var(--line);box-shadow:var(--ombre);margin-bottom:14px;}
-
-/* ⚠ LE FILET DE MARQUE, sous le titre de chaque carte. C'est lui qui
-   donne le ton, pas la couleur du texte : un accent applique au texte se
-   lit comme un lien ou une alerte. */
-.card > h2::after{content:"";display:block;width:34px;height:3px;
-   background:var(--marque);margin-top:8px;border-radius:2px;}
-
-label{display:block;margin-top:14px;font-weight:700;letter-spacing:.01em;}
+label{display:block;margin-top:12px;font-weight:600;}
 select,input[type=number],input[type=text],input[type=password]{
-  width:100%;padding:12px;margin-top:7px;border:1px solid var(--line);
-  border-radius:8px;background:var(--field);color:var(--ink);
-  font-size:16px;font-weight:500;font-family:inherit;}
+  width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);
+  border-radius:9px;background:var(--field);color:var(--ink);
+  font-size:16px;font-family:inherit;}
 select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
   outline:2px solid var(--accent);outline-offset:2px;}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-/* ⚠ LES BOUTONS SONT PLUS GRAS ET PLUS SERRES. Un bouton se lit d'un
-   coup ou pas du tout ; la graisse y sert a autre chose qu'a decorer. */
-.btn{display:inline-block;margin-top:16px;margin-right:8px;padding:13px 18px;
-     border:none;border-radius:8px;background:var(--btn);color:var(--btn-ink);
-     font-size:15px;font-weight:700;letter-spacing:.05em;
-     font-family:inherit;cursor:pointer;text-decoration:none;}
+.btn{display:inline-block;margin-top:16px;margin-right:8px;padding:12px 18px;
+     border:none;border-radius:11px;background:var(--btn);color:var(--btn-ink);
+     font-size:16px;font-family:inherit;cursor:pointer;text-decoration:none;}
 .btn2{background:var(--btn2);color:#fff;}
 .btn3{background:var(--accent);color:#fff;}
 .btn:disabled{background:var(--btn-off);color:var(--ink2);cursor:default;}
-.ok{padding:13px 14px;background:var(--ok-bg);border:1px solid var(--ok-line);
-    color:var(--ok-ink);border-radius:8px;font-weight:500;}
-.err{padding:13px 14px;background:var(--err-bg);border:1px solid var(--err-line);
-     color:var(--err-ink);border-radius:8px;font-weight:500;}
-/* ⚠ LE TEXTE SECONDAIRE MONTE A 15 px ET S'EPAISSIT. A 14 px en gris
-   clair il disparaissait au soleil -- et c'est la qu'on lit les
-   avertissements qui comptent. */
-.small{color:var(--ink2);font-size:15px;font-weight:450;}
-.tb{padding:9px 15px;margin-right:6px;border:none;border-radius:8px;
-    background:var(--chip);color:var(--chip-ink);font-size:15px;font-weight:600;
+.ok{padding:12px;background:var(--ok-bg);border:1px solid var(--ok-line);
+    color:var(--ok-ink);border-radius:9px;}
+.err{padding:12px;background:var(--err-bg);border:1px solid var(--err-line);
+     color:var(--err-ink);border-radius:9px;}
+.small{color:var(--ink2);font-size:14px;}
+.tb{padding:7px 14px;margin-right:6px;border:none;border-radius:9px;
+    background:var(--chip);color:var(--chip-ink);font-size:14px;
     font-family:inherit;cursor:pointer;}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
 @media (max-width:600px){
@@ -222,7 +184,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v8</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v7</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
