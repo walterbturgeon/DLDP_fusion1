@@ -222,9 +222,13 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v10</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v11</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
+  <br><button type="button" id="btnUnites" onclick="uniBascule()"
+        style="margin-top:8px;padding:7px 14px;font:inherit;font-size:13px;font-weight:700;
+               border:1px solid var(--line);border-radius:8px;background:var(--chip);
+               color:var(--chip-ink);cursor:pointer;">Métrique (km/h, m)</button>
 </div>
 </div>
 
@@ -404,7 +408,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <div class="card large dlg-only"><h2>Vitesse</h2>
 <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
 <span id="spd" style="font-size:42px;font-weight:bold;">--</span>
-<span class="small">km/h</span>
+<span class="small" id="spdUnite">km/h</span>
 <span id="gval" style="font-size:22px;font-weight:bold;color:var(--g);margin-left:14px;">--</span>
 <span class="small">G (GPS)</span>
 <span id="gimu" style="font-size:22px;font-weight:bold;color:var(--imu);margin-left:14px;">--</span>
@@ -1330,7 +1334,11 @@ function onTelemetry(ev) {
   buf.push([j.now, j.v, j.g]);
   while (buf.length && buf[0][0] < nowSrv - 31000) buf.shift();
 
-  document.getElementById('spd').textContent = (j.v / 100).toFixed(1);
+  // ⚠ LA CONVERSION SE FAIT ICI, au dernier moment. `j.v` reste la valeur
+  // du module, en centiemes de km/h -- c'est elle qui sert aux calculs.
+  document.getElementById('spd').textContent = uniVit(j.v / 100).toFixed(1);
+  var elU = document.getElementById('spdUnite');
+  if (elU) elU.textContent = uniVitU();
   document.getElementById('gval').textContent = (j.g >= 0 ? '+' : '') + j.g.toFixed(2);
   document.getElementById('meta').textContent = (j.valid ? 'fix OK' : 'pas de fix') + ' | ' + j.sats + ' sats | ' + j.hz + ' Hz';
   if (j.gfilt != null && j.gfilt != gfilt) { gfilt = j.gfilt; syncGSel(); }
@@ -2241,6 +2249,46 @@ function dspAjouterAConfig(cfg) {
 // puis la voiture relisait sa configuration et RAMENAIT tout en
 // DRAGLOGICS. La bascule paraissait ne pas marcher, alors qu'elle marchait
 // et se faisait ecraser aussitot.
+// =====================================================================
+// UNITES : METRIQUE OU IMPERIAL
+// =====================================================================
+// ⚠ C'EST UN CHOIX D'AFFICHAGE, PAS UN REGLAGE DU MODULE. Le module
+// mesure et transmet TOUJOURS en metrique -- km/h et metres. La page
+// convertit au dernier moment, juste avant d'ecrire. Convertir plus tot
+// ferait circuler deux unites dans le meme code, et un jour l'une
+// passerait pour l'autre.
+//
+// ⚠ ON N'ARRONDIT QU'A L'AFFICHAGE. Les comparaisons, les ecarts et le
+// meilleur tour se calculent sur les valeurs d'origine : arrondir avant
+// de comparer ferait deux tours « egaux » qui ne le sont pas.
+//
+// ⚠ LES JALONS RESTENT EN PIEDS dans les deux systemes. 60, 330, 660 et
+// 1320 pieds sont les distances NORMEES de la course en ligne droite --
+// les traduire en metres donnerait 18,29 m et 402,34 m, que personne
+// n'emploie et que personne ne reconnaitrait.
+var uniImp = false;
+try { uniImp = (localStorage.getItem('dl_unites') === 'imp'); } catch (e) {}
+
+function uniVit(kmh)  { return uniImp ? kmh * 0.621371 : kmh; }
+function uniVitU()    { return uniImp ? 'mph' : 'km/h'; }
+function uniDist(m)   { return uniImp ? m * 3.28084 : m; }
+function uniDistU()   { return uniImp ? 'pi' : 'm'; }
+
+function uniBascule() {
+  uniImp = !uniImp;
+  try { localStorage.setItem('dl_unites', uniImp ? 'imp' : 'met'); } catch (e) {}
+  uniAfficher();
+  // Tout ce qui porte une unite est redessine tout de suite : laisser la
+  // moitie de la page dans l'ancienne unite serait pire que ne rien faire.
+  if (typeof rlLapVu !== 'undefined' && rlLapVu) rlRendre();
+  if (typeof draw === 'function') { try { draw(); } catch (e) {} }
+}
+
+function uniAfficher() {
+  var b = document.getElementById('btnUnites');
+  if (b) b.textContent = uniImp ? 'Impérial (mph, pi)' : 'Métrique (km/h, m)';
+}
+
 var appMode = null;          // 'dlg' | 'trlg' | null si jamais vu
 var rlConnecte = false;      // le relais est-il connecte en ce moment
 
@@ -2730,7 +2778,7 @@ function rlDessinerTrace(num) {
   var t = rlTraces.get(num);
   var manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
   if (lg) {
-    lg.innerHTML = 'Vert = lent, rouge = rapide (' + vmin + ' à ' + vmax + ' km/h). '
+    lg.innerHTML = 'Vert = lent, rouge = rapide (' + Math.round(uniVit(vmin)) + ' à ' + Math.round(uniVit(vmax)) + ' ' + uniVitU() + '). '
                  + pts.length + ' points'
                  + (manque > 0 ? ' — <b>' + manque + ' morceau(x) manquant(s)</b>, tracé incomplet.' : '')
                  + '<br>Touche le tracé pour lire la vitesse en un point.';
@@ -2887,7 +2935,7 @@ function rlAfficherPoint() {
   // d'un intervalle NOMINAL ; si des morceaux manquent, le compte de
   // points ne correspond plus au temps ecoule. Afficher une seconde
   // precise laisserait croire a une mesure qu'on n'a pas.
-  var s = '<b>' + p.kmh + ' km/h</b> &nbsp; point ' + (rlPointVu + 1) + ' / ' + n;
+  var s = '<b>' + Math.round(uniVit(p.kmh)) + ' ' + uniVitU() + '</b> &nbsp; point ' + (rlPointVu + 1) + ' / ' + n;
   if (interv) s += ' &nbsp; environ ' + ((rlPointVu * interv) / 1000).toFixed(1) + ' s après le départ';
 
   // La position reelle, si l'origine du tour est connue.
@@ -2964,7 +3012,7 @@ function rlRendre() {
     if (lap.dMax >= 65535) {
       h += '<div class="err small">Distance depuis l’origine saturée — l’origine GPS n’était pas valide sur ce tour.</div>';
     } else {
-      h += '<div class="small">📍 Jusqu’à ' + lap.dMax + ' m de l’origine';
+      h += '<div class="small">📍 Jusqu’à ' + Math.round(uniDist(lap.dMax)) + ' ' + uniDistU() + ' de l’origine';
       if (lap.oLat) {
         h += ' — <a href="https://www.google.com/maps?q=' + lap.oLat + ',' + lap.oLon
            + '" target="_blank" rel="noopener">origine sur la carte</a>';
@@ -3423,6 +3471,11 @@ async function submitConfig(ev) {
 // que les champs existent deja. Le groupe reste masque tant qu'aucun
 // firmware n'annonce la cle `dsp0`.
 dspConstruireBlocs();
+
+// ⚠ LE BOUTON DIT L'UNITE COURANTE DES LE CHARGEMENT. Un bouton muet
+// laisserait deviner dans quel systeme on lit -- et une vitesse de 148
+// n'a pas le meme sens en km/h et en mph.
+uniAfficher();
 
 // [FUSION] L'INTERRUPTEUR EST MONTRÉ DÈS LE CHARGEMENT, avant toute
 // connexion, dès qu'on a déjà vu un module fusionné une fois.
