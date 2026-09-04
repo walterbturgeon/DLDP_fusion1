@@ -222,7 +222,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v11</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v12</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -492,6 +492,25 @@ trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
 <div class="small">Connexion</div><div><b>connecte-toi pour voir</b></div>
 </div></div>
 
+<!-- ⚠ CETTE CARTE N'APPARAIT QU'EN MODE CAN « OBD2 ». Une carte vide en
+     permanence ferait chercher une panne dans les autres modes. -->
+<div class="card dlg-only" id="cardObd" style="display:none">
+<h2>OBD-II &mdash; lecture standard</h2>
+<div class="err">
+<b>&#9888; Ce mode ÉMET sur le bus diagnostic du véhicule.</b>
+Tous les autres modes écoutent en silence&nbsp;; celui-ci envoie une requête,
+comme un lecteur de codes du commerce.
+<br><br>
+<b>&#9888; Ces valeurs ne sont pas des mesures de performance.</b>
+Le calculateur répond quand il veut, avec un retard variable.
+<b>La vitesse OBD-II ne nourrit ni le chrono ni les jalons</b>&nbsp;: le GPS
+reste la seule source de la mesure. Un retard de 80&nbsp;ms vaut 3,3&nbsp;m
+d'erreur à 150&nbsp;km/h.
+</div>
+<div id="obdEtat" class="small" style="margin:10px 0;"></div>
+<div id="obdGrid" class="grid"></div>
+</div>
+
 <div class="card dlg-only"><h2>Réglages</h2>
 <form id="cfgForm" onsubmit="return submitConfig(event)">
 
@@ -569,6 +588,7 @@ pour le remplacer.
 <option value="VAG_WHEELSPEED">FuelTech -- vitesse de roue + jalons</option>
 <option value="HOLLEY">Holley Expander (injection vitesse)</option>
 <option value="ECUMASTER">ECUMaster GPStoCAN V2</option>
+<option value="OBD2">OBD-II standard (lit la voiture)</option>
 </select>
 
 <div id="grp_cbr">
@@ -1702,6 +1722,85 @@ async function refreshState() {
   var html = '';
   rows.forEach(function (r) { html += "<div class='small'>" + r[0] + "</div><div><b>" + r[1] + "</b></div>"; });
   document.getElementById('etatGrid').innerHTML = html;
+
+  majObd(j.obd);
+}
+
+// =====================================================
+// OBD-II : les douze parametres standards
+// =====================================================
+// ⚠⚠ LA PAGE S'ACCROCHE AU NUMERO DE PID, JAMAIS A LA POSITION DANS LE
+// TABLEAU. Le PID est une norme ISO : 0x0C (12) est le regime sur toutes
+// les voitures du monde. Une position, elle, change des que le firmware
+// ajoute un parametre -- et la page afficherait alors le regime sous
+// l'etiquette de la temperature d'eau, sans que rien ne le signale.
+//
+// ⚠ UN PID INCONNU DE CETTE TABLE S'AFFICHE QUAND MEME, sous son numero.
+// Un firmware plus recent que la page ne doit pas rendre une valeur
+// invisible : mieux vaut « PID 5E » qu'une case absente.
+var OBD_NOMS = {
+  0x04: ['Charge moteur',            '%'],
+  0x05: ['Température liquide',      '°C'],
+  0x0B: ['Pression collecteur',      'kPa'],
+  0x0C: ['Régime',                   'tr/min'],
+  0x0D: ['Vitesse (OBD, pas GPS)',   'km/h'],
+  0x0E: ["Avance à l'allumage",      "°"],
+  0x0F: ['Température air admission','°C'],
+  0x10: ["Débit d'air (MAF)",        "g/s"],
+  0x11: ['Position papillon',        '%'],
+  0x33: ['Pression barométrique',    'kPa'],
+  0x42: ['Tension du calculateur',   'V'],
+  0x5C: ["Température d'huile",      "°C"]
+};
+
+function majObd(o) {
+  var carte = document.getElementById('cardObd');
+  if (!carte) return;
+  if (!o) { carte.style.display = 'none'; return; }
+  carte.style.display = '';
+
+  // ---- La ligne d'etat ----
+  // ⚠ ON DIT D'ABORD SI CA REPOND. Un tableau de douze tirets sans
+  // explication fait chercher un cable alors que le contact est coupe.
+  var e = document.getElementById('obdEtat');
+  if (o.rep === 0) {
+    e.innerHTML = '<b style="color:var(--err-ink)">Aucune réponse du véhicule.</b>'
+      + ' ' + o.req + ' requêtes envoyées, ' + o.to + ' sans réponse.'
+      + '<br>Pistes&nbsp;: contact coupé, débit différent de 500&nbsp;kbit/s,'
+      + " ou véhicule qui n'est pas sur CAN (ISO&nbsp;9141 / PWM).";
+  } else {
+    e.innerHTML = 'Identifiants <b>' + o.bits + ' bits</b> &middot; '
+      + o.req + ' requêtes &middot; <b>' + o.rep + ' réponses</b> &middot; '
+      + o.to + ' sans réponse &middot; dernière il y a <b>' + o.vu + ' ms</b>';
+  }
+
+  // ---- Le tableau ----
+  var h = '';
+  for (var i = 0; i < o.pid.length; i++) {
+    var pid = o.pid[i];
+    var def = OBD_NOMS[pid];
+    var nom = def ? def[0] : ('PID ' + pid.toString(16).toUpperCase());
+    var uni = def ? def[1] : '';
+    var sup = o.sup.charAt(i);   // '1' ok, '0' refuse, '2' pas encore sonde
+    var age = o.age[i];
+
+    var val, coul;
+    if (sup === '0') {
+      val = 'non supporté'; coul = 'var(--ink2)';
+    } else if (sup === '2' || age < 0) {
+      val = 'en attente...'; coul = 'var(--ink2)';
+    } else if (age > 2000) {
+      // ⚠ AU-DELA DE 2 SECONDES ON N'AFFICHE PLUS LE CHIFFRE. Le montrer
+      // en gris ne suffit pas : un chiffre reste un chiffre, et on le lit
+      // comme une mesure vivante. On dit depuis quand il est mort.
+      val = 'figé depuis ' + (age / 1000).toFixed(1) + ' s'; coul = 'var(--err-ink)';
+    } else {
+      val = o.v[i] + ' ' + uni; coul = '';
+    }
+    h += "<div class='small'>" + nom + "</div><div><b"
+       + (coul ? " style='color:" + coul + "'" : "") + ">" + val + "</b></div>";
+  }
+  document.getElementById('obdGrid').innerHTML = h;
 }
 
 // =====================================================
@@ -1711,8 +1810,12 @@ async function refreshState() {
 // gagner un "cbr" explicite sur le defaut du mode. Sans ces deux fonctions,
 // choisir un nouveau mode renverrait le debit affiche (celui de l'ancien
 // mode) et le defaut du nouveau mode ne s'appliquerait jamais.
+// ⚠ OBD-II = 500 kbit/s. C'est le debit de la norme ISO 15765-4 pour la
+// quasi-totalite des vehicules depuis 2008. Quelques modeles plus anciens
+// sont a 250 kbit/s : le champ reste modifiable, le defaut n'est pas une
+// contrainte.
 var CBR_DEFAUT = { LINK: 500000, FUELTECH: 1000000, VAG_WHEELSPEED: 500000,
-                   HOLLEY: 1000000, ECUMASTER: 1000000 };
+                   HOLLEY: 1000000, ECUMASTER: 1000000, OBD2: 500000 };
 
 // Montre la plage reellement occupee par le flux ECUMaster. Le champ est un
 // nombre decimal (c'est ce que transporte le JSON) mais tout le monde parle
@@ -3265,6 +3368,14 @@ function appliquerCapacites(j) {
     try { localStorage.setItem('dl_app_mode', appMode); } catch (e) {}
   }
   appAfficher();
+
+  // ⚠ ON REIMPOSE L'UNITE A CHAQUE LECTURE DE CONFIGURATION. Le module a
+  // pu etre reflashe, ou regle par un autre telephone : sans ce rappel,
+  // son ecran resterait dans une unite que la page n'affiche plus -- et
+  // deux appareils du meme ensemble affichant l'un des km/h et l'autre
+  // des mph, c'est la garantie qu'on compare un jour deux nombres qui ne
+  // sont pas dans la meme unite.
+  uniEnvoyer();
 
   // Le mode ECUMaster se deduit de la presence de son ID de base. Le laisser
   // selectionnable sur un firmware qui l'ignore ferait echouer la sauvegarde
