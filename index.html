@@ -170,7 +170,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v3</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v4</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -553,7 +553,7 @@ jalon affiche et l'etat de course.
 <input id="sfx" name="sfx" type="text" maxlength="5" value="00001"
        autocapitalize="characters" autocomplete="off" spellcheck="false"
        style="width:100%;padding:10px;margin-top:6px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box;">
-<p class="small">Le module s'annonce sous <b id="unitName">DL_00001</b>.
+<p class="small">Le module s'annonce sous <b id="unitName">CAR00001</b>.
 Lettres, chiffres, <b>-</b> et <b>_</b> uniquement. Effectif <b>au redemarrage</b> du module.</p>
 <div id="sfxErr" class="small" style="color:var(--danger);"></div>
 
@@ -1372,7 +1372,7 @@ function onTelemetry(ev) {
 }
 
 // ---- Menus generes (numero d unite / distance partielle) -------------
-// Le nom BLE fait exactement 8 caracteres ("DL_00001") : c'est la limite
+// Le nom BLE fait exactement 8 caracteres ("CAR00001") : c'est la limite
 // du budget d'annonce, l'UUID de service occupant le reste. Ne pas
 // elargir la plage au dela de 10 sans revoir le format cote firmware.
 (function () {
@@ -1392,20 +1392,24 @@ function onTelemetry(ev) {
 
 // Meme jeu de caracteres que le firmware ([A-Za-z0-9_-], 1 a 5). On
 // SIGNALE les caracteres refuses au lieu de les retirer en douce : sinon
-// l'utilisateur tape "MA VOIT" et decouvre "DL_MAVOI" sans comprendre.
+// l'utilisateur tape "MA VOIT" et decouvre "CARMAVOI" sans comprendre.
 function syncUnitName() {
   var raw = document.getElementById('sfx').value;
   var filtre = raw.replace(/[^A-Za-z0-9_-]/g, '');   // caracteres retires
   var ok = filtre.slice(0, 5);                        // puis longueur
   var err = document.getElementById('sfxErr');
-  document.getElementById('unitName').textContent = 'DL_' + (ok || '?????');
+  // ⚠ LE PREFIXE DOIT ETRE CELUI QUE LE MODULE ANNONCE VRAIMENT. La page
+  // montrait « DL_ » alors que le firmware fusionne annonce « CAR ». On
+  // lisait donc ici un nom qui ne se retrouvait pas dans la liste du
+  // telephone -- et on cherchait un appareil sous un nom qu'il ne porte pas.
+  document.getElementById('unitName').textContent = 'CAR' + (ok || '?????');
 
   // Deux causes distinctes, deux messages distincts : dire "caracteres
   // refuses" a quelqu'un qui a juste tape trop long l'enverrait chercher
   // au mauvais endroit.
   if (raw.length === 0)          err.textContent = 'Il faut au moins un caractère.';
   else if (filtre !== raw)       err.textContent = 'Lettres, chiffres, - et _ seulement.';
-  else if (filtre.length > 5)    err.textContent = '5 caractères au maximum : le nom tient dans DL_ plus cinq.';
+  else if (filtre.length > 5)    err.textContent = '5 caractères au maximum : le nom tient dans CAR plus cinq.';
   else                           err.textContent = '';
   return ok;
 }
