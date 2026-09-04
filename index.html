@@ -170,8 +170,9 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v2</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v3</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
+  <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
 </div>
 
@@ -2395,6 +2396,33 @@ async function rlAttacher(server) {
   await ch.startNotifications();
   ch.addEventListener('characteristicvaluechanged', rlNotif);
   rlCmdChar = await svc.getCharacteristic(RL_CMD);
+
+  // ⚠ ON LIT LA VERSION, ON NE L'ATTEND PAS D'UNE NOTIFICATION. Le relais
+  // la pose comme valeur initiale de cette meme caracteristique ; une
+  // LECTURE est demandee explicitement et ne peut rien perturber, tandis
+  // qu'une notification de type inconnu traverserait le decodeur de tours.
+  //
+  // ⚠ ET SI LA LECTURE ECHOUE, ON LE DIT. Un relais d'une version plus
+  // ancienne ne pose rien : ecrire « version inconnue » vaut mieux que
+  // laisser « non connecte », qui ferait croire a un relais absent alors
+  // qu'il repond.
+  try {
+    var vv = await ch.readValue();
+    var b0 = new Uint8Array(vv.buffer);
+    var er = document.getElementById('rlVer');
+    if (er) {
+      if (b0.length > 1 && b0[0] === 0x10) {
+        var txt = new TextDecoder().decode(b0.slice(1));
+        er.innerHTML = 'relais : <b>' + txt.replace(/[<>&]/g, '') + '</b>';
+      } else {
+        er.textContent = 'relais : version inconnue (firmware plus ancien)';
+      }
+    }
+  } catch (e) {
+    var er2 = document.getElementById('rlVer');
+    if (er2) er2.textContent = 'relais : version illisible';
+  }
+
   rlEtat('Connecté à ' + (rlDevice.name || 'RELAY') + '. En attente d’un tour...');
   var b = document.getElementById('relaisBloc');
   if (b) b.style.display = '';
@@ -2443,6 +2471,8 @@ function relaisDeconnecter() {
   } catch (e) {}
   rlCmdChar = null;
   rlBoutons(false);
+  var erd = document.getElementById('rlVer');
+  if (erd) erd.textContent = 'relais : non connecté';
   rlEtat('Déconnecté du relais. Tu peux maintenant connecter la voiture pour changer de métier.');
   appAfficher();
 }

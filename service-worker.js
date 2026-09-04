@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v2';   // v2 : carte du relais toujours atteignable, mise a jour automatique
+const CACHE = PREFIX + 'v3';   // v3 : versions des deux firmwares en tete de page
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
