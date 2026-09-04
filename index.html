@@ -2261,7 +2261,7 @@ async function rlAttacher(server) {
   await ch.startNotifications();
   ch.addEventListener('characteristicvaluechanged', rlNotif);
   rlCmdChar = await svc.getCharacteristic(RL_CMD);
-  rlEtat('Connecté à ' + (rlDevice.name || 'TRLG-Relais') + '. En attente d’un tour...');
+  rlEtat('Connecté à ' + (rlDevice.name || 'RELAY') + '. En attente d’un tour...');
   var b = document.getElementById('relaisBloc');
   if (b) b.style.display = '';
 }
