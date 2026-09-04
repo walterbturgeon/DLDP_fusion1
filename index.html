@@ -281,6 +281,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <h2>Relais TRLG</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
+<button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Remettre les tours à zéro</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
 </div>
 <div id="relaisBloc" style="margin-top:14px;display:none;">
@@ -2586,6 +2587,62 @@ function rlRendre() {
     }
     tb.innerHTML = lignes;
     if (bloc) bloc.style.display = '';
+  }
+}
+
+// =====================================================================
+// REMISE A ZERO DES TOURS
+// =====================================================================
+// Elle efface DEUX choses distinctes, et il faut les deux :
+//   - la liste et les traces gardees DANS LA PAGE ;
+//   - le compteur DANS LA VOITURE, par une commande relayee.
+//
+// ⚠ N'EFFACER QUE LA PAGE NE SERT A RIEN. Le prochain tour arriverait
+// numerote #7 dans une liste vide -- on croirait avoir perdu six tours.
+//
+// ⚠ ELLE NE TOUCHE PAS A LA LIGNE VIRTUELLE. Recalibrer coute trois
+// passages ; effacer un compteur ne coute rien. Les melanger ferait
+// perdre une calibration valide chaque fois qu'on veut simplement
+// repartir de zero entre deux seances. Le bouton de recalibration est
+// separe, et c'est voulu.
+//
+// ⚠ ON DEMANDE CONFIRMATION. Les tours d'une seance ne se retrouvent
+// pas : ils ne sont pas archives dans la page.
+async function rlResetTours() {
+  if (!rlLaps.length && !rlCmdChar) {
+    rlEtat('Rien à effacer, et le relais n’est pas connecté.');
+    return;
+  }
+  var n = rlLaps.length;
+  if (!confirm('Remettre les tours à zéro ?\n\n'
+             + n + ' tour(s) affiché(s) seront effacés de cette page, et le '
+             + 'compteur de la voiture repartira de zéro.\n\n'
+             + 'La ligne virtuelle GPS n’est PAS touchée.')) return;
+
+  // La page d'abord : ce qu'on voit doit correspondre a ce qu'on a demande,
+  // meme si la commande radio se perd.
+  rlLaps = [];
+  rlTraces = new Map();
+  rlLapVu = null;
+  var ids = ['relaisGrid', 'relaisTours', 'speedLegend'];
+  for (var i = 0; i < ids.length; i++) {
+    var e = document.getElementById(ids[i]);
+    if (e) e.innerHTML = '';
+  }
+  var c = document.getElementById('speedMap');
+  if (c) c.style.display = 'none';
+  var tb = document.getElementById('relaisCanaux');
+  if (tb) tb.style.display = 'none';
+
+  if (!rlCmdChar) {
+    rlEtat('Page effacée. ⚠ Le relais n’est pas connecté : le compteur de la voiture n’a PAS été remis à zéro.');
+    return;
+  }
+  try {
+    await rlCmdChar.writeValue(new Uint8Array([0x05]));
+    rlEtat('Tours remis à zéro. Le prochain passage sera un DÉPART.');
+  } catch (e) {
+    rlEtat('Page effacée, mais la commande n’est pas partie : ' + e.message);
   }
 }
 
