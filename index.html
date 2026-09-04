@@ -162,7 +162,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ AFFICHAGE SEULEMENT. Ne JAMAIS s'en servir pour decider quels
      reglages montrer : ca se decide par les CLES du JSON. Un module reste
      au champ doit rester pilotable meme si son numero est inconnu d'ici. -->
-<div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.65;">page fusion v1<span id="fwVer"></span></div>
+<div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.65;">page fusion v2<span id="fwVer"></span></div>
 </div>
 
 <script>
@@ -3218,7 +3218,41 @@ appAfficher();
 if (!navigator.bluetooth) document.getElementById('bleUnsupported').style.display = 'block';
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('service-worker.js').catch(function () {});
+  // =================================================================
+  // MISE A JOUR AUTOMATIQUE DE LA PAGE
+  // =================================================================
+  // ⚠ ON NE VIDE PAS LE CACHE A CHAQUE CONNEXION. Le cache EST ce qui
+  // fait marcher la page sans reseau, dans les puits ou au bord de la
+  // piste. Le vider a chaque fois supprimerait exactement la fonction
+  // pour laquelle il existe.
+  //
+  // Le vrai defaut etait ailleurs : la page ne demandait JAMAIS s'il
+  // existait une version plus recente. Le navigateur decide seul de
+  // verifier, et il peut attendre des heures. On voyait donc la page
+  // d'hier en croyant voir celle du jour -- et rien ne le disait.
+  //
+  // Ici on force la verification a chaque ouverture, et quand une
+  // nouvelle version prend la main, on recharge UNE fois.
+  //
+  // ⚠ LE GARDE-FOU CONTRE LA BOUCLE EST OBLIGATOIRE. Sans lui, un
+  // rechargement declenche une nouvelle prise de main, qui declenche un
+  // rechargement : la page clignoterait sans fin et deviendrait
+  // inutilisable, precisement quand on en a besoin.
+  navigator.serviceWorker.register('service-worker.js').then(function (reg) {
+    try { reg.update(); } catch (e) {}
+    // Une verification aussi a chaque retour sur la page : en piste, on
+    // la quitte et on y revient sans jamais la fermer.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { try { reg.update(); } catch (e) {} }
+    });
+  }).catch(function () {});
+
+  var _rechargeFaite = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (_rechargeFaite) return;
+    _rechargeFaite = true;
+    location.reload();
+  });
 }
 </script>
 </body>
