@@ -96,6 +96,43 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;}
 @media (max-width:600px){.row,.grid{grid-template-columns:1fr;}}
 
+/* =================================================================
+   TABLETTE ET GRAND ECRAN : deux colonnes
+   =================================================================
+   La page etait figee a 780 px de large, en une seule colonne. Sur une
+   tablette cela laissait deux larges bandes vides de chaque cote et
+   obligeait a defiler sur toute la hauteur pour atteindre les reglages.
+
+   ⚠ TOUT NE PASSE PAS EN DEUX COLONNES. Les cartes marquees `large`
+   gardent la pleine largeur :
+     - Vitesse, parce que son graphique perd sa lisibilite une fois
+       reduit de moitie -- une courbe ecrasee ment sur les pentes ;
+     - le metier et le relais, parce qu'ils portent la carte du parcours
+       et la decision la plus importante de la page.
+
+   ⚠ On passe body en grille SANS toucher au HTML. Les enfants qui ne
+   sont pas des cartes -- le logo, la ligne de version -- traversent les
+   deux colonnes, sinon ils se retrouveraient a cote d'une carte.
+   ================================================================= */
+@media (min-width:900px){
+  body{max-width:1180px;
+       display:grid;grid-template-columns:1fr 1fr;
+       column-gap:16px;align-items:start;
+       /* ⚠ REMPLISSAGE DENSE, SANS QUOI LA MOITIE DROITE RESTE VIDE.
+          Les cartes pleine largeur s'intercalent entre les etroites :
+          sans `dense`, chaque carte etroite se retrouve seule sur sa
+          ligne parce que la carte large suivante exige une ligne neuve.
+          Constate le 3 septembre 2026 -- la page paraissait deux fois
+          plus longue qu'elle ne devait, avec une colonne entierement
+          vide a droite. */
+       grid-auto-flow:row dense;}
+  body > :not(.card){grid-column:1 / -1;}
+  .card.large{grid-column:1 / -1;}
+  /* Les valeurs de la carte d'etat tiennent en trois colonnes ici : a
+     780 px elles en avaient deux, ce qui etirait la carte pour rien. */
+  .grid{grid-template-columns:1fr 1fr 1fr;}
+}
+
 /* Bascule de theme : discrete, en haut a droite, toujours atteignable. */
 #themeBtn{position:absolute;top:14px;right:14px;width:38px;height:38px;
   border:1px solid var(--line);border-radius:50%;background:var(--card);
@@ -200,7 +237,7 @@ function couleur(nom){
      mode TRLG, il n'y aurait plus aucune marche arrière : le maître est
      dans la voiture, et on ne pourrait plus jamais revenir à DRAGLOGICS.
 ================================================================== -->
-<div class="card" id="grp_app" style="display:none;">
+<div class="card large" id="grp_app" style="display:none;">
 <h2>Métier de l'appareil</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
   <button type="button" class="btn" id="btnAppDlg" style="margin-top:0;flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" onclick="appDemander('dlg')">
@@ -240,7 +277,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
      toujours joindre la voiture pour reprendre la main, même quand le
      relais est ce qu'on regarde.
 ================================================================== -->
-<div class="card" id="grp_relais" style="display:none;">
+<div class="card large" id="grp_relais" style="display:none;">
 <h2>Relais TRLG</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
@@ -261,7 +298,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <div id="otaMsg" style="margin-top:12px;"></div>
 </div>
 
-<div class="card"><h2>Vitesse</h2>
+<div class="card large"><h2>Vitesse</h2>
 <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
 <span id="spd" style="font-size:42px;font-weight:bold;">--</span>
 <span class="small">km/h</span>
@@ -285,7 +322,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <canvas id="cv" width="720" height="240" style="width:100%;height:auto;"></canvas>
 </div>
 
-<div class="card"><h2>Chrono</h2>
+<div class="card dlg-only"><h2>Chrono</h2>
 <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
 <button type="button" class="btn" style="margin-top:0;" onclick="perfReset()">Reset</button>
 <button type="button" class="btn btn2" style="margin-top:0;" onclick="perfSim()">Simuler un passage</button>
@@ -307,7 +344,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 </div>
 </div>
 
-<div class="card"><h2>Calibration</h2>
+<div class="card dlg-only"><h2>Calibration</h2>
 <div class="grid" id="calGrid">
 <div class="small">Etat</div><div><b id="calState">--</b></div>
 </div>
@@ -320,7 +357,7 @@ Ne touche à rien pendant 3 secondes.<br>
 </p>
 </div>
 
-<div class="card"><h2>Tes passages</h2>
+<div class="card dlg-only"><h2>Tes passages</h2>
 <p class="small">Envoie sur GitHub les passages gardés dans le module. Il en garde six au maximum.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
 <button type="button" class="btn btn3" id="btnGhRuns" style="margin-top:0;" onclick="fetchAndSendToGithub()">Envoyer sur GitHub</button>
@@ -333,7 +370,7 @@ Ne touche à rien pendant 3 secondes.<br>
 <!-- ============ HISTORIQUE DLAP ============ -->
 <!-- Visible UNIQUEMENT devant un DLAP qui sait servir son historique.
      Le DLPT a deja sa propre carte de passages, juste au-dessus. -->
-<div class="card" id="cardHist" style="display:none;">
+<div class="card dlg-only" id="cardHist" style="display:none;">
 <h2>Passages archivés</h2>
 <p class="small">Ce que le DLAP a reçu, du plus récent au plus ancien. Il en garde
 trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
@@ -2128,10 +2165,43 @@ function appAfficher() {
     }
   }
 
-  // Le bloc du relais ne s'ouvre qu'en TRLG : chercher un beacon en mode
-  // ligne droite n'aurait aucun sens, et le module l'ignore de toute façon.
+  // =================================================================
+  // LE METIER CHANGE CE QUE LA PAGE MONTRE
+  // =================================================================
+  // ⚠ C'EST LE COEUR DE L'INTERRUPTEUR, pas un detail d'affichage.
+  // Montrer les jalons d'une course en ligne droite pendant un tour de
+  // piste, ce n'est pas seulement inutile : ce sont des cases vides et
+  // des chiffres figes qui ressemblent a une panne. L'oeil cherche des
+  // choses differentes dans les deux metiers.
+  //
+  // TRACLOGICS cache : Chrono, Calibration, Tes passages, Passages
+  // archives -- tous lies au depart arrete et aux jalons de distance.
+  // Il montre : le Relais, avec ses tours et la carte du parcours.
+  //
+  // ⚠ CE QUI RESTE VISIBLE DANS LES DEUX : Vitesse, Etat, Reglages,
+  // Connexion, Mise a jour, et le Metier lui-meme. La vitesse et l'etat
+  // servent a juger si le module va bien, quel que soit le metier -- et
+  // le Metier doit rester atteignable, sinon il n'y a plus de marche
+  // arriere.
+  var trlg = (appMode === 'trlg');
+
   var gr = document.getElementById('grp_relais');
-  if (gr) gr.style.display = (appMode === 'trlg') ? '' : 'none';
+  if (gr) gr.style.display = trlg ? '' : 'none';
+
+  var dlg = document.querySelectorAll('.dlg-only');
+  for (var i = 0; i < dlg.length; i++) {
+    if (trlg) {
+      // On RETIENT l'affichage d'origine avant de masquer : la carte des
+      // passages archives est deja masquee par elle-meme tant qu'aucun
+      // passage n'existe. La rendre visible au retour en DRAGLOGICS
+      // ferait apparaitre une carte vide.
+      if (dlg[i].dataset.dlgVu == null) dlg[i].dataset.dlgVu = dlg[i].style.display;
+      dlg[i].style.display = 'none';
+    } else if (dlg[i].dataset.dlgVu != null) {
+      dlg[i].style.display = dlg[i].dataset.dlgVu;
+      delete dlg[i].dataset.dlgVu;
+    }
+  }
 }
 
 async function appDemander(tok) {
