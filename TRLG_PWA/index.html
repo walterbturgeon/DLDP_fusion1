@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>TRLG</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f14">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f7fa">
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #131a22;
+    --border: #24303c;
+    --text: #e8eef4;
+    --muted: #8fa1b3;
+    --accent: #3ddc84;
+    --warn: #ff5c5c;
+    --btn-text: #06210f;
+  }
+  /* Trois etats, pas deux.
+     - AUTO : rien sur <html>, seul prefers-color-scheme decide. C'est l'etat
+       par defaut, celui de la grande majorite des telephones.
+     - CLAIR ou SOMBRE : data-theme sur <html>, et ce choix doit BATTRE le
+       reglage du telephone dans les DEUX sens.
+     D'ou la garde :not([data-theme="dark"]) sur la regle systeme. Sans elle,
+     un telephone en mode clair imposerait le clair meme apres un choix manuel
+     du sombre. */
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --border: #dbe1e8;
+      --text: #14181d;
+      --muted: #5b6b7a;
+      --accent: #1f8f57;
+      --warn: #d23c3c;
+      --btn-text: #ffffff;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --border: #dbe1e8;
+    --text: #14181d;
+    --muted: #5b6b7a;
+    --accent: #1f8f57;
+    --warn: #d23c3c;
+    --btn-text: #ffffff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0f14;
+    --panel: #131a22;
+    --border: #24303c;
+    --text: #e8eef4;
+    --muted: #8fa1b3;
+    --accent: #3ddc84;
+    --warn: #ff5c5c;
+    --btn-text: #06210f;
+  }
+
+  /* Barre d'outils : theme et simulateur, hors du chemin quand on roule. */
+  .outils { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .segment { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .segment button {
+    background: transparent; color: var(--text); border: 0; border-radius: 0;
+    padding: 8px 12px; font-size: 0.85rem; font-weight: 500;
+  }
+  .segment button.on { background: var(--accent); color: var(--btn-text); font-weight: 700; }
+  .segment button + button { border-left: 1px solid var(--border); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 720px; /* garde un affichage compact sur tablette/grand ecran, plein largeur sur telephone */
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    padding: 16px;
+  }
+  /* LARGEUR ET COLONNES SELON L'APPAREIL
+     Le max-width de 720 px convenait au telephone, mais laissait une tablette
+     en paysage avec une colonne etroite au milieu d'un ecran vide. Trois
+     paliers :
+     - jusqu'a 720 px  : une colonne pleine largeur (telephone portrait)
+     - de 721 a 1000   : une colonne, plus large (tablette portrait)
+     - au-dela de 1000 : DEUX colonnes - le tour et sa carte a gauche, les
+       canaux CAN a droite. On compare la carte et les valeurs sans faire
+       defiler (tablette paysage, ordinateur). */
+  .deuxColonnes { display: block; }
+  .scrollX { overflow-x: auto; }
+
+  @media (min-width: 721px) {
+    body { max-width: 960px; }
+  }
+  @media (min-width: 1001px) {
+    body { max-width: 1280px; }
+    .deuxColonnes {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+    /* Les canaux restent a l'ecran pendant qu'on regarde la carte. */
+    .colCanaux { position: sticky; top: 12px; max-height: calc(100vh - 40px); overflow-y: auto; }
+  }
+  /* Paysage sur petit ecran : la hauteur manque, on serre les marges. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    body { padding: 8px 12px; }
+    h1 { font-size: 1.1rem; }
+    .sub { margin-bottom: 8px; }
+  }
+
+  h1 { font-size: 1.3rem; margin: 0 0 4px 0; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+  button {
+    background: var(--accent);
+    color: var(--btn-text);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  #status { margin: 12px 0; color: var(--muted); font-size: 0.9rem; }
+  .lapHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 16px 0 8px 0;
+  }
+  .lapHeader .lapNum { font-size: 1.6rem; font-weight: 700; }
+  .lapHeader .lapTime { font-size: 1.4rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .flags { color: var(--warn); font-size: 0.85rem; margin-bottom: 12px; min-height: 1.2em; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  th:first-child, td:first-child { text-align: left; color: var(--muted); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+  tbody tr:hover { background: #182029; }
+  .history { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0; }
+  .history button { padding: 8px 14px; font-size: 0.85rem; white-space: nowrap; }
+  .history button.active { outline: 2px solid var(--accent); }
+  #installBtn { position: fixed; bottom: 16px; right: 16px; display: none; }
+  #disconnectBtn { display: none; margin-left: 8px; }
+  #resetLineBtn { display: none; margin-left: 8px; }
+  .rssiPanel { margin: 16px 0; }
+  .rssiHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .rssiHeader .sub { margin: 0; }
+  #rssiLatest { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .winSel button { padding: 5px 10px; font-size: 0.78rem; margin-left: 4px; }
+  .winSel button.active { outline: 2px solid var(--accent); }
+  #rssiChart { width: 100%; height: 140px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; display: block; }
+</style>
+</head>
+<body>
+  <h1>TRLG</h1>
+  <div class="sub">Résumé min / max / moyenne par tour — Link G4+ CAN Generic Dash</div>
+
+  <div class="outils">
+    <span class="sub" style="margin:0;">Thème</span>
+    <div class="segment" id="themeSeg">
+      <button data-theme-choix="auto">Auto</button>
+      <button data-theme-choix="light">Clair</button>
+      <button data-theme-choix="dark">Sombre</button>
+    </div>
+    <button class="secondary" id="simBtn" style="padding:8px 12px;font-size:0.85rem;">Simuler un tour</button>
+    <button class="secondary" id="simClearBtn" style="padding:8px 12px;font-size:0.85rem;">Effacer</button>
+  </div>
+
+  <button id="connectBtn">Se connecter au relais (BLE)</button>
+  <button id="disconnectBtn" class="secondary">Déconnecter</button>
+  <button id="resetLineBtn" class="secondary" title="Force une nouvelle calibration de la ligne virtuelle GPS (3 tours) sur la voiture">Réinitialiser la ligne</button>
+  <div id="status">Non connecté.</div>
+
+  <div class="rssiPanel">
+    <div class="rssiHeader">
+      <span class="sub">Signal RSSI (live, pendant les rafales de fin de tour)</span>
+      <span id="rssiLatest">-</span>
+    </div>
+    <svg id="rssiChart" viewBox="0 0 600 160" preserveAspectRatio="none"></svg>
+    <div class="winSel" style="margin-top:6px; text-align:right;">
+      <button data-w="5" class="secondary">5s</button>
+      <button data-w="15" class="secondary active">15s</button>
+      <button data-w="60" class="secondary">60s</button>
+    </div>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="history" id="history"></div>
+
+    <div class="deuxColonnes">
+    <div class="colTour">
+    <div class="lapHeader">
+      <div><span class="sub">Tour</span><br><span class="lapNum" id="lapNum">-</span></div>
+      <div style="text-align:right">
+        <span class="sub" id="timingSrc">Durée</span><br>
+        <span class="lapTime" id="lapTime">-</span>
+        <span id="lapDelta" style="font-size:0.95rem;margin-left:8px;"></span>
+      </div>
+    </div>
+    <div id="speedBlock" style="display:none;margin:14px 0;">
+      <div class="sub" style="margin-bottom:6px;">Carte de vitesse du tour</div>
+      <canvas id="speedMap" height="300" style="display:block;width:100%;border-radius:8px;background:rgba(128,128,128,.08);"></canvas>
+      <div class="sub" id="speedLegend" style="margin-top:6px;"></div>
+      <div class="sub" style="margin-top:4px;opacity:.75;">
+        <span style="color:hsl(140,85%,45%)">■</span> le plus lent du tour
+        &nbsp;→&nbsp;
+        <span style="color:hsl(0,85%,50%)">■</span> le plus rapide
+      </div>
+    </div>
+
+    <div class="flags" id="flags"></div>
+    <div class="sub" id="gpsInfo" style="margin-bottom:12px;"></div>
+    </div>
+
+    <div class="colCanaux">
+    <div class="scrollX">
+    <table>
+      <thead>
+        <tr><th>Canal</th><th>Min</th><th>Max</th><th>Moy</th><th>Δ Moy</th><th>Unité</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    </div>
+    </div>
+    </div>
+  </div>
+
+  <button id="installBtn">Installer l'app</button>
+
+<script>
+// ---------- Table des canaux (miroir exact de la table cote emetteur ESPNOW_LapRelay_Car.ino) ----------
+const CHANNELS = [
+  { name: "Engine Speed",       unit: "RPM",  txScale: 1 },
+  { name: "MAP",                unit: "kPa",  txScale: 10 },
+  { name: "MGP",                unit: "kPa",  txScale: 10 },
+  { name: "Barometric Pressure",unit: "kPa",  txScale: 10 },
+  { name: "Throttle Position",  unit: "%",    txScale: 10 },
+  { name: "Injector Duty",      unit: "%",    txScale: 10 },
+  { name: "Sec. Injector Duty", unit: "%",    txScale: 10 },
+  { name: "Injector Pulse W.",  unit: "ms",   txScale: 100 },
+  { name: "Coolant Temp",       unit: "°C",   txScale: 10 },
+  { name: "Intake Air Temp",    unit: "°C",   txScale: 10 },
+  { name: "Battery Voltage",    unit: "V",    txScale: 100 },
+  { name: "Mass Air Flow",      unit: "g/s",  txScale: 10 },
+  { name: "Gear",               unit: "",     txScale: 1 },
+  { name: "Injector Timing",    unit: "°",    txScale: 1 },
+  { name: "Ignition Timing",    unit: "°",    txScale: 10 },
+  { name: "Inlet Cam L",        unit: "°",    txScale: 10 },
+  { name: "Inlet Cam R",        unit: "°",    txScale: 10 },
+  { name: "Exhaust Cam L",      unit: "°",    txScale: 10 },
+  { name: "Exhaust Cam R",      unit: "°",    txScale: 10 },
+  { name: "Lambda 1",           unit: "λ",    txScale: 1000 },
+  { name: "Lambda 2",           unit: "λ",    txScale: 1000 },
+  { name: "Trigger 1 Err",      unit: "",     txScale: 1 },
+  { name: "Fault Code Count",   unit: "",     txScale: 1 },
+  { name: "Fuel Pressure",      unit: "kPa",  txScale: 1 },
+  { name: "Oil Temp",           unit: "°C",   txScale: 10 },
+  { name: "Oil Pressure",       unit: "kPa",  txScale: 1 },
+  { name: "Wheel Speed LF",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed LR",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed RF",     unit: "km/h", txScale: 10 },
+  { name: "Wheel Speed RR",     unit: "km/h", txScale: 10 },
+  { name: "Knock Cyl 1",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 2",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 3",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 4",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 5",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 6",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 7",        unit: "",     txScale: 1 },
+  { name: "Knock Cyl 8",        unit: "",     txScale: 1 },
+];
+
+const LIMIT_FLAGS = [
+  "RPM Limit", "MAP Limit", "Speed Limit", "Maximum Ignition",
+  "Anti-Lag Ignition Cut", "High Voltage Supply Limit", "Overrun", "Traction Limit",
+  "Low Supply Voltage Limit", "Launch RPM Limit", "Wakeup", "GP RPM Limit 1",
+  "CL Stepper Limit", "GP RPM Limit 2", "E-Throttle Limit", "Cyclic Idle Active",
+];
+
+const SERVICE_UUID = "b3d5a900-1a2b-4c3d-9e0f-56789abcdef0";
+const CHARACTERISTIC_UUID = "b3d5a901-1a2b-4c3d-9e0f-56789abcdef0";
+const CMD_CHARACTERISTIC_UUID = "b3d5a902-1a2b-4c3d-9e0f-56789abcdef0";
+
+// ---------- Simulateur de tour ----------
+//
+// A quoi il sert : essayer l'affichage sans voiture, sans relais et sans
+// Bluetooth. Il fabrique les MEMES octets que le firmware, puis les passe par
+// dispatchPacket - le meme chemin que les vrais paquets. Un simulateur qui
+// remplirait directement les structures ne prouverait rien du decodage.
+//
+// Les tours simules sont marques : ils entrent dans l'historique comme les
+// autres, mais on doit pouvoir les distinguer d'un vrai run.
+let simTour = 900;   // numerotation a part, loin des vrais tours
+
+function simOctetsResume(lap, dureeMs, src, rpmMax, distMax) {
+  const b = new ArrayBuffer(248), v = new DataView(b);
+  v.setUint8(0, 0x01);
+  v.setUint16(1, lap, true);
+  v.setUint32(3, dureeMs, true);
+  v.setUint8(7, src);
+  // Quelques canaux plausibles ; les autres restent a zero, comme sur un bus
+  // ou tous les canaux ne sont pas cables.
+  const vals = {
+    0:[850, rpmMax, Math.round(rpmMax*0.57)], 1:[28,240,131], 3:[1013,1013,1013],
+    4:[0,1000,412], 8:[880,1010,948], 9:[290,340,312], 10:[132,142,138],
+    12:[1,5,3], 19:[780,1020,905], 23:[380,420,401], 24:[850,1120,995],
+    25:[310,480,402], 26:[0,1780,1120], 27:[0,1790,1124],
+    28:[0,1785,1122], 29:[0,1788,1125]
+  };
+  let o = 8;
+  for (let i = 0; i < 38; i++) {
+    const t = vals[i] || [0,0,0];
+    v.setInt16(o, t[0], true); v.setInt16(o+2, t[1], true); v.setInt16(o+4, t[2], true);
+    o += 6;
+  }
+  v.setUint16(o, 0, true); o += 2;
+  v.setInt32(o, Math.round(45.4067702*1e7), true); o += 4;
+  v.setInt32(o, Math.round(-72.7509981*1e7), true); o += 4;
+  v.setUint16(o, distMax, true);
+  return new Uint8Array(b);
+}
+
+function simOctetsTrace(lap, idx, count, pts, intervalMs) {
+  const b = new ArrayBuffer(16 + 46*5), v = new DataView(b);
+  v.setUint8(0, 0x04);
+  v.setUint16(1, lap, true);
+  v.setUint8(3, idx); v.setUint8(4, count); v.setUint8(5, pts.length);
+  v.setUint16(6, intervalMs, true);
+  v.setInt32(8, Math.round(45.4067702*1e7), true);
+  v.setInt32(12, Math.round(-72.7509981*1e7), true);
+  let o = 16;
+  for (const q of pts) {
+    v.setInt16(o, q.dx, true); v.setInt16(o+2, q.dy, true); v.setUint8(o+4, q.kmh);
+    o += 5;
+  }
+  return new Uint8Array(b);
+}
+
+// Un parcours ferme avec deux epingles : la vitesse chute dans les courbes et
+// remonte dans les droites, ce qui donne une carte lisible plutot qu'un
+// dégradé uniforme.
+function simParcours(n, graine) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = 2*Math.PI*i/n;
+    const r = 250 + 95*Math.cos(2*a + graine*0.4);
+    const courbure = Math.abs(Math.cos(2*a + graine*0.4));
+    const kmh = 58 + 98*(1 - courbure) + 6*Math.sin(5*a + graine);
+    pts.push({
+      dx: Math.round(r*Math.cos(a)),
+      dy: Math.round(0.63*r*Math.sin(a)),
+      kmh: Math.max(25, Math.min(255, Math.round(kmh)))
+    });
+  }
+  return pts;
+}
+
+function simulerUnTour() {
+  const n = laps.length;
+  // Les trois premiers tours en radio, puis GPS precis : c'est la sequence
+  // reelle - la ligne virtuelle a besoin de trois passages pour se caler.
+  const src = n < 3 ? 2 : 1;
+  const duree = Math.round(50000 + 4000*Math.sin(n*1.7) + Math.random()*1500);
+  const rpmMax = 6800 + Math.round(Math.random()*600);
+  const distMax = 150 + Math.round(Math.random()*20);
+
+  // ⚠ Le numero est fige AVANT les envois differes. Les morceaux de trace
+  // partent par setTimeout, donc apres l'increment : lire simTour dans le
+  // callback les envoyait sur un tour qui n'existe pas encore, et la carte de
+  // vitesse ne s'affichait jamais.
+  const numero = simTour;
+  simTour++;
+
+  document.getElementById('content').style.display = 'block';
+  dispatchPacket(simOctetsResume(numero, duree, src, rpmMax, distMax));
+
+  // La trace suit le resume, en trois morceaux, comme sur la vraie liaison.
+  const pts = simParcours(138, n);
+  const interval = Math.round(duree / 138);
+  [0,1,2].forEach((idx, k) => setTimeout(
+    () => dispatchPacket(simOctetsTrace(numero, idx, 3, pts.slice(idx*46, idx*46+46), interval)),
+    250 * (k + 1)));
+  const st = document.getElementById('status');
+  const relie = (typeof bleConnected !== "undefined") && bleConnected;
+  if (!relie) st.textContent = "Mode simulation — " + laps.length + " tour(s) fabriqué(s), aucun matériel branché.";
+}
+
+function effacerSimulation() {
+  laps.length = 0;
+  traces.clear();
+  lapAffiche = null;
+  simTour = 900;
+  document.getElementById('content').style.display = 'none';
+  document.getElementById('speedBlock').style.display = 'none';
+  renderHistory();
+  const relie = (typeof bleConnected !== "undefined") && bleConnected;
+  if (!relie) document.getElementById('status').textContent = "Non connecté.";
+}
+
+// ---------- Theme : auto, clair ou sombre ----------
+//
+// "auto" ne pose RIEN sur <html> : c'est prefers-color-scheme qui decide, et
+// la page suit le telephone si celui-ci change en cours de route. Un choix
+// explicite pose data-theme, qui bat le reglage du telephone dans les deux sens.
+//
+// La couleur de la barre systeme (theme-color) suit le choix, sinon le haut de
+// l'ecran resterait de la couleur de l'autre theme.
+const THEME_CLE = "trlg-theme";
+const THEME_BARRE = { light: "#f5f7fa", dark: "#0b0f14" };
+
+function appliquerTheme(choix) {
+  const html = document.documentElement;
+  if (choix === "auto") html.removeAttribute("data-theme");
+  else html.setAttribute("data-theme", choix);
+
+  const sombre = choix === "dark" ||
+    (choix === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.remove());
+  const m = document.createElement("meta");
+  m.name = "theme-color";
+  m.content = sombre ? THEME_BARRE.dark : THEME_BARRE.light;
+  document.head.appendChild(m);
+
+  document.querySelectorAll("#themeSeg button").forEach(b =>
+    b.classList.toggle("on", b.dataset.themeChoix === choix));
+
+  try { localStorage.setItem(THEME_CLE, choix); } catch (e) { /* navigation privee */ }
+  if (typeof lapAffiche !== "undefined" && lapAffiche) drawTrace(lapAffiche.num);
+  if (typeof drawRssiChart === "function") drawRssiChart();
+}
+
+function initTheme() {
+  let choix = "auto";
+  try { choix = localStorage.getItem(THEME_CLE) || "auto"; } catch (e) { /* ignore */ }
+  appliquerTheme(choix);
+  document.querySelectorAll("#themeSeg button").forEach(b =>
+    b.addEventListener("click", () => appliquerTheme(b.dataset.themeChoix)));
+  // En mode auto, on suit le telephone s'il bascule pendant qu'on regarde.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    let c = "auto";
+    try { c = localStorage.getItem(THEME_CLE) || "auto"; } catch (e) { /* ignore */ }
+    if (c === "auto") appliquerTheme("auto");
+  });
+}
+
+// ---------- Reassemblage des paquets fragmentes (BLE_CHUNK_SIZE cote relais) ----------
+let chunks = [];
+let expectedTotal = 0;
+const laps = []; // historique en memoire {num, durationMs, values, flags}
+
+function onNotify(event) {
+  const data = new Uint8Array(event.target.value.buffer);
+  const index = data[0];
+  const total = data[1];
+  const payload = data.slice(2);
+
+  if (index === 0) {
+    chunks = [];
+    expectedTotal = total;
+  }
+  chunks[index] = payload;
+
+  if (chunks.filter(c => c).length === expectedTotal && expectedTotal > 0) {
+    const full = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+    let offset = 0;
+    for (const c of chunks) { full.set(c, offset); offset += c.length; }
+    dispatchPacket(full);
+    chunks = [];
+    expectedTotal = 0;
+  }
+}
+
+function dispatchPacket(bytes) {
+  const msgType = bytes[0];
+  if (msgType === 0x01) decodeLapPacket(bytes);
+  else if (msgType === 0x02) handleRssiSample(bytes);
+  else if (msgType === 0x04) decodeTracePacket(bytes);
+}
+
+// ---------- Trace du tour : la carte de vitesse ----------
+//
+// La voiture envoie 138 positions par tour, decoupees en 3 morceaux de 46.
+// Chaque point tient en 5 octets : ecart est/nord a l'origine du tour en
+// metres (deux int16) et vitesse en km/h (uint8). Les morceaux arrivent dans
+// n'importe quel ordre et peuvent manquer - on dessine ce qu'on a.
+const traces = new Map();   // numero de tour -> { parts, intervalMs, origine }
+let lapAffiche = null;      // tour actuellement a l'ecran
+
+function decodeTracePacket(bytes) {
+  const view = new DataView(bytes.buffer);
+  const lapNumber  = view.getUint16(1, true);
+  const partIndex  = view.getUint8(3);
+  const partCount  = view.getUint8(4);
+  const pointCount = view.getUint8(5);
+  const intervalMs = view.getUint16(6, true);
+  const originLat  = view.getInt32(8, true) / 1e7;
+  const originLon  = view.getInt32(12, true) / 1e7;
+
+  let t = traces.get(lapNumber);
+  if (!t) { t = { parts: [], partCount, intervalMs, originLat, originLon }; traces.set(lapNumber, t); }
+  t.partCount = partCount;
+  t.intervalMs = intervalMs;
+
+  const pts = [];
+  let offset = 16;
+  for (let i = 0; i < pointCount && offset + 5 <= bytes.length; i++) {
+    pts.push({
+      dx: view.getInt16(offset, true),
+      dy: view.getInt16(offset + 2, true),
+      kmh: view.getUint8(offset + 4)
+    });
+    offset += 5;
+  }
+  t.parts[partIndex] = pts;
+
+  // Les morceaux arrivent apres le resume : si c'est le tour a l'ecran, on
+  // redessine au fur et a mesure qu'ils tombent.
+  if (lapAffiche && lapAffiche.num === lapNumber) drawTrace(lapNumber);
+  renderHistory();
+}
+
+function traceComplete(t) {
+  if (!t) return [];
+  const out = [];
+  for (let i = 0; i < t.partCount; i++) if (t.parts[i]) out.push(...t.parts[i]);
+  return out;
+}
+
+// Vert au plus lent, rouge au plus vite : l'oeil trouve tout de suite les
+// portions ou la voiture perd du temps.
+function couleurVitesse(kmh, min, max) {
+  const u = max > min ? (kmh - min) / (max - min) : 0.5;
+  const teinte = 140 - 140 * Math.max(0, Math.min(1, u));   // 140 vert -> 0 rouge
+  return `hsl(${teinte}, 85%, 50%)`;
+}
+
+function drawTrace(lapNumber) {
+  const carte = document.getElementById('speedMap');
+  const legende = document.getElementById('speedLegend');
+  const bloc = document.getElementById('speedBlock');
+  if (!carte) return;
+
+  const t = traces.get(lapNumber);
+  const pts = traceComplete(t);
+  if (pts.length < 2) { bloc.style.display = 'none'; return; }
+  bloc.style.display = 'block';
+
+  const manquants = t.partCount - t.parts.filter(p => p).length;
+  const vits = pts.map(p => p.kmh);
+  const vmin = Math.min(...vits), vmax = Math.max(...vits);
+
+  // La hauteur suit la largeur, MAIS elle est aussi bornee par la hauteur de
+  // l'ecran. Sans cette seconde borne, un telephone en paysage - 900 x 420 -
+  // recevait une carte de 460 px de haut : plus haute que l'ecran entier, donc
+  // il fallait faire defiler pour voir un seul tour.
+  const dpr = window.devicePixelRatio || 1;
+  const w = carte.clientWidth;
+  const h = Math.max(180, Math.min(460,
+                     Math.round(w * 0.72),
+                     Math.round(window.innerHeight * 0.55)));
+  carte.style.height = h + 'px';
+  carte.width = w * dpr; carte.height = h * dpr;
+  const g = carte.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const xs = pts.map(p => p.dx), ys = pts.map(p => p.dy);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 24;
+  const s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1),
+                     (h - 2 * pad) / Math.max(maxY - minY, 1));
+  const ox = (w - (maxX - minX) * s) / 2, oy = (h - (maxY - minY) * s) / 2;
+  const X = x => ox + (x - minX) * s;
+  const Y = y => h - (oy + (y - minY) * s);
+
+  // Un segment par intervalle, colore par la vitesse moyenne de ses deux bouts.
+  g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (let i = 1; i < pts.length; i++) {
+    g.strokeStyle = couleurVitesse((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax);
+    g.beginPath();
+    g.moveTo(X(pts[i - 1].dx), Y(pts[i - 1].dy));
+    g.lineTo(X(pts[i].dx), Y(pts[i].dy));
+    g.stroke();
+  }
+
+  // Depart du tour
+  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
+  g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2);
+  g.fill(); g.stroke();
+
+  // Echelle
+  const cible = Math.pow(10, Math.round(Math.log10(80 / s)));
+  g.strokeStyle = 'rgba(128,128,128,.8)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(12, h - 14); g.lineTo(12 + cible * s, h - 14); g.stroke();
+  g.fillStyle = 'rgba(128,128,128,.9)'; g.font = '11px monospace';
+  g.fillText(cible >= 1000 ? (cible / 1000) + ' km' : cible + ' m', 12, h - 20);
+
+  legende.innerHTML =
+    `<b>${pts.length}</b> points · <b>${vmin}</b> à <b>${vmax}</b> km/h · ` +
+    `un point toutes les <b>${(t.intervalMs / 1000).toFixed(1)} s</b>` +
+    (manquants > 0 ? ` · <span style="color:#e08">${manquants} morceau(x) non reçu(s)</span>` : '');
+}
+
+// ---------- RSSI live ----------
+const RSSI_MIN = -100, RSSI_MAX = -30;
+let rssiSamples = [];
+let rssiWindowSec = 15;
+
+function handleRssiSample(bytes) {
+  const rssi = new DataView(bytes.buffer).getInt8(1);
+  rssiSamples.push({ t: Date.now(), rssi });
+  const cutoff = Date.now() - 60000;
+  while (rssiSamples.length && rssiSamples[0].t < cutoff) rssiSamples.shift();
+}
+
+function drawRssiChart() {
+  const svg = document.getElementById("rssiChart");
+  const W = 600, H = 160;
+  const now = Date.now();
+  const windowMs = rssiWindowSec * 1000;
+  const visible = rssiSamples.filter(s => now - s.t <= windowMs);
+
+  // Auto-scale l'axe Y sur le min/max visible, avec 5dBm de marge de chaque cote
+  // pour garder un graphique lisible (sinon la plage fixe -100/-30 ecrase les
+  // petites variations quand le signal reste stable).
+  const RSSI_MARGIN = 5;
+  let yMin = RSSI_MIN, yMax = RSSI_MAX;
+  if (visible.length) {
+    const vals = visible.map(s => s.rssi);
+    yMin = Math.min(...vals) - RSSI_MARGIN;
+    yMax = Math.max(...vals) + RSSI_MARGIN;
+  }
+
+  const xFor = t => W - ((now - t) / windowMs) * W;
+  const yFor = r => {
+    const clamped = Math.max(yMin, Math.min(yMax, r));
+    return H - ((clamped - yMin) / (yMax - yMin)) * H;
+  };
+
+  let path = "";
+  let lastT = null;
+  visible.forEach(s => {
+    const x = xFor(s.t).toFixed(1), y = yFor(s.rssi).toFixed(1);
+    path += (lastT === null || s.t - lastT > 2000 ? "M" : "L") + x + "," + y + " ";
+    lastT = s.t;
+  });
+
+  const dots = visible.map(s =>
+    `<circle cx="${xFor(s.t).toFixed(1)}" cy="${yFor(s.rssi).toFixed(1)}" r="2" fill="var(--accent)"/>`
+  ).join("");
+
+  const gridYTop = yFor(yMax).toFixed(1), gridYBot = yFor(yMin).toFixed(1);
+
+  svg.innerHTML =
+    `<line x1="0" y1="${gridYTop}" x2="${W}" y2="${gridYTop}" stroke="var(--border)" stroke-dasharray="4,4"/>` +
+    `<text x="4" y="${Math.max(10, gridYTop - 4)}" fill="var(--muted)" font-size="10">${Math.round(yMax)}dBm</text>` +
+    `<line x1="0" y1="${gridYBot}" x2="${W}" y2="${gridYBot}" stroke="var(--border)" stroke-dasharray="4,4"/>` +
+    `<text x="4" y="${Math.min(H - 4, gridYBot - 4)}" fill="var(--muted)" font-size="10">${Math.round(yMin)}dBm</text>` +
+    `<path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>` +
+    dots;
+
+  const latest = rssiSamples.length ? rssiSamples[rssiSamples.length - 1] : null;
+  document.getElementById("rssiLatest").textContent = latest ? latest.rssi + " dBm" : "-";
+}
+
+setInterval(drawRssiChart, 250);
+
+document.querySelectorAll(".winSel button").forEach(b => {
+  b.addEventListener("click", () => {
+    rssiWindowSec = parseInt(b.dataset.w, 10);
+    document.querySelectorAll(".winSel button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    drawRssiChart();
+  });
+});
+
+function decodeLapPacket(bytes) {
+  const view = new DataView(bytes.buffer);
+  const lapNumber = view.getUint16(1, true);
+  const lapDurationMs = view.getUint32(3, true);
+  const timingSource = view.getUint8(7); // 0 = radio 1er beacon, 1 = GPS precis (ligne virtuelle), 2 = radio pic RSSI
+
+  const values = [];
+  let offset = 8;
+  for (let i = 0; i < CHANNELS.length; i++) {
+    const min = view.getInt16(offset, true); offset += 2;
+    const max = view.getInt16(offset, true); offset += 2;
+    const avg = view.getInt16(offset, true); offset += 2;
+    values.push({ min, max, avg });
+  }
+  const limitFlags = view.getUint16(offset, true); offset += 2;
+
+  let originLat = null, originLon = null, maxDistM = null;
+  if (bytes.length >= offset + 10) {
+    originLat = view.getInt32(offset, true) / 1e7; offset += 4;
+    originLon = view.getInt32(offset, true) / 1e7; offset += 4;
+    maxDistM = view.getUint16(offset, true); offset += 2;
+  }
+
+  const lap = { num: lapNumber, durationMs: lapDurationMs, timingSource, values, limitFlags, originLat, originLon, maxDistM };
+  laps.push(lap);
+  renderLap(lap);
+  renderHistory();
+}
+
+function fmtVal(raw, txScale) {
+  const v = raw / txScale;
+  return Number.isInteger(txScale) && txScale === 1 ? v.toString() : v.toFixed(txScale >= 100 ? 3 : 1);
+}
+
+function fmtDuration(ms) {
+  const s = ms / 1000;
+  return s.toFixed(2) + " s";
+}
+
+function findPreviousLap(lap) {
+  const idx = laps.indexOf(lap);
+  return idx > 0 ? laps[idx - 1] : null;
+}
+
+function renderLap(lap) {
+  lapAffiche = lap;
+  drawTrace(lap.num);
+  document.getElementById("lapNum").textContent = "#" + lap.num;
+  document.getElementById("lapTime").textContent = fmtDuration(lap.durationMs);
+  document.getElementById("timingSrc").textContent =
+    lap.timingSource === 1 ? "Durée (GPS précis)" :
+    lap.timingSource === 2 ? "Durée (radio, pic signal)" :
+    "Durée (radio, 1er signal)";
+
+  const prev = findPreviousLap(lap);
+  const deltaEl = document.getElementById("lapDelta");
+  if (prev) {
+    const deltaMs = lap.durationMs - prev.durationMs;
+    const sign = deltaMs >= 0 ? "+" : "";
+    deltaEl.textContent = `${sign}${(deltaMs / 1000).toFixed(2)}s vs #${prev.num}`;
+    deltaEl.style.color = deltaMs < 0 ? "var(--accent)" : (deltaMs > 0 ? "var(--warn)" : "var(--muted)");
+  } else {
+    deltaEl.textContent = "";
+  }
+
+  const activeFlags = LIMIT_FLAGS.filter((_, i) => (lap.limitFlags & (1 << i)) !== 0);
+  document.getElementById("flags").textContent = activeFlags.length
+    ? "⚠ " + activeFlags.join(" · ")
+    : "";
+
+  const gpsEl = document.getElementById("gpsInfo");
+  if (lap.maxDistM !== null && lap.maxDistM !== undefined) {
+    let txt = `📍 Jusqu'à ${lap.maxDistM} m de l'origine`;
+    if (lap.originLat) {
+      const mapUrl = `https://www.google.com/maps?q=${lap.originLat},${lap.originLon}`;
+      gpsEl.innerHTML = `${txt} — <a href="${mapUrl}" target="_blank" style="color:var(--accent)">origine sur la carte</a>`;
+    } else {
+      gpsEl.textContent = txt;
+    }
+  } else {
+    gpsEl.textContent = "";
+  }
+
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+  CHANNELS.forEach((ch, i) => {
+    const v = lap.values[i];
+    let deltaStr = "-";
+    if (prev) {
+      const d = (v.avg - prev.values[i].avg) / ch.txScale;
+      const sign = d >= 0 ? "+" : "";
+      deltaStr = sign + d.toFixed(ch.txScale >= 100 ? 3 : 1);
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${ch.name}</td>
+      <td>${fmtVal(v.min, ch.txScale)}</td>
+      <td>${fmtVal(v.max, ch.txScale)}</td>
+      <td>${fmtVal(v.avg, ch.txScale)}</td>
+      <td style="color:var(--muted)">${deltaStr}</td>
+      <td>${ch.unit}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("content").style.display = "block";
+}
+
+window.addEventListener('resize', () => { if (lapAffiche) drawTrace(lapAffiche.num); });
+
+function renderHistory() {
+  const hist = document.getElementById("history");
+  hist.innerHTML = "";
+  laps.slice().reverse().forEach(lap => {
+    const b = document.createElement("button");
+    b.className = "secondary" + (lap === laps[laps.length - 1] ? " active" : "");
+    const t = traces.get(lap.num);
+    const nPts = traceComplete(t).length;
+    b.textContent = "#" + lap.num + " · " + fmtDuration(lap.durationMs) + (nPts ? " 🗺" : "");
+    if (nPts) b.title = nPts + " points de trace";
+    b.onclick = () => {
+      renderLap(lap);
+      document.querySelectorAll(".history button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+    };
+    hist.appendChild(b);
+  });
+}
+
+let bleDevice = null;
+let userDisconnected = false;
+let reconnecting = false;
+let cmdCharacteristic = null;
+
+function setConnectedUI(connected) {
+  document.getElementById("connectBtn").style.display = connected ? "none" : "inline-block";
+  document.getElementById("disconnectBtn").style.display = connected ? "inline-block" : "none";
+  document.getElementById("resetLineBtn").style.display = connected ? "inline-block" : "none";
+}
+
+// Le relais coupe volontairement le BLE entre les tours (pour laisser l'ESP-NOW
+// respirer - un seul ESP32 ne peut pas faire du BLE continu + de la bonne
+// reception radio en meme temps) et le rallume juste apres chaque tour recu.
+// Le PWA doit donc se reconnecter tout seul a chaque reapparition du relais,
+// sans redemander la permission (deja accordee sur l'objet bleDevice retenu).
+async function attachToRelay(server) {
+  const statusEl = document.getElementById("status");
+  const service = await server.getPrimaryService(SERVICE_UUID);
+  const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+  await characteristic.startNotifications();
+  characteristic.addEventListener("characteristicvaluechanged", onNotify);
+  cmdCharacteristic = await service.getCharacteristic(CMD_CHARACTERISTIC_UUID);
+  statusEl.textContent = "Connecté à " + (bleDevice.name || "TRLG-Relais") + ". En attente d'un tour...";
+  setConnectedUI(true);
+}
+
+async function attemptReconnect() {
+  if (reconnecting) return;
+  reconnecting = true;
+  const statusEl = document.getElementById("status");
+  statusEl.textContent = "Relais hors ligne (BLE coupé entre les tours) - reconnexion automatique...";
+  while (!userDisconnected) {
+    try {
+      const server = await bleDevice.gatt.connect();
+      await attachToRelay(server);
+      reconnecting = false;
+      return;
+    } catch (err) {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  reconnecting = false;
+}
+
+document.getElementById("connectBtn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("status");
+  try {
+    statusEl.textContent = "Recherche du relais...";
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+    });
+    userDisconnected = false;
+    statusEl.textContent = "Connexion...";
+    bleDevice.addEventListener("gattserverdisconnected", () => {
+      setConnectedUI(false);
+      if (!userDisconnected) attemptReconnect();
+      else statusEl.textContent = "Déconnecté.";
+    });
+    const server = await bleDevice.gatt.connect();
+    await attachToRelay(server);
+  } catch (err) {
+    statusEl.textContent = "Erreur : " + err.message;
+  }
+});
+
+document.getElementById("disconnectBtn").addEventListener("click", () => {
+  userDisconnected = true;
+  if (bleDevice && bleDevice.gatt.connected) {
+    bleDevice.gatt.disconnect();
+  }
+});
+
+// Force une nouvelle calibration de la ligne virtuelle GPS sur la voiture (3 tours).
+// Utile apres un changement de circuit ou une calibration ratee, sans devoir
+// reflasher ni redemarrer la voiture manuellement.
+document.getElementById("resetLineBtn").addEventListener("click", async () => {
+  const statusEl = document.getElementById("status");
+  if (!cmdCharacteristic) {
+    statusEl.textContent = "Pas de connexion au relais en ce moment - reessaie dans un instant.";
+    return;
+  }
+  if (!confirm("Réinitialiser la ligne virtuelle GPS ? La voiture devra refaire 3 tours pour recalibrer.")) return;
+  try {
+    await cmdCharacteristic.writeValue(new Uint8Array([0x03]));
+    statusEl.textContent = "Commande de réinitialisation envoyée à la voiture.";
+  } catch (err) {
+    statusEl.textContent = "Échec de l'envoi (relais hors ligne en ce moment) - reessaie.";
+  }
+});
+
+// ---------- Installation PWA ----------
+let deferredPrompt;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById("installBtn").style.display = "block";
+});
+document.getElementById("installBtn").addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt = null;
+  document.getElementById("installBtn").style.display = "none";
+});
+
+document.getElementById("simBtn").addEventListener("click", simulerUnTour);
+document.getElementById("simClearBtn").addEventListener("click", effacerSimulation);
+
+initTheme();
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
