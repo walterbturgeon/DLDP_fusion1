@@ -222,7 +222,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
      un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v8</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v9</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
 </div>
@@ -2320,20 +2320,25 @@ function appAfficher() {
   // ⚠ L'AFFICHAGE SUIT LE RELAIS, LES BOUTONS SUIVENT LA VOITURE.
   var trlg = (pageMode() === 'trlg');
 
-  // ⚠ LA CARTE DU RELAIS RESTE TOUJOURS ATTEIGNABLE.
-  // Elle etait masquee hors du mode TRACLOGICS. Sur un telephone qui ne
-  // s'est jamais connecte a la voiture, cela fermait le seul chemin
-  // d'entree : pour voir le relais il fallait etre en TRACLOGICS, et pour
-  // y etre il fallait la voiture. UN CERCLE SANS ENTREE -- constate le
-  // 4 septembre 2026, et vider le cache n'y changeait rien.
+  // =================================================================
+  // LA CARTE DU RELAIS : TROIS CAS, PAS DEUX
+  // =================================================================
+  // ⚠ EN DRAGLOGICS DECLARE, ELLE DISPARAIT ENTIEREMENT -- menu, carte de
+  // chaleur et donnees comprises. Dans ce metier le module IGNORE le
+  // beacon : aucun tour ne peut arriver, et une carte de tours vide
+  // pendant une seance en ligne droite ressemble a une panne.
   //
-  // Se connecter au relais est au contraire la facon NORMALE d'arriver en
-  // piste : le telephone est au bord de la ligne, la voiture est sur le
-  // circuit. C'est cette connexion qui fait basculer la page.
+  // ⚠ MAIS ELLE RESTE VISIBLE QUAND LE METIER EST INCONNU. Sur un
+  // telephone qui ne s'est jamais connecte a la voiture, la masquer
+  // fermerait le seul chemin d'entree : pour voir le relais il faudrait
+  // etre en TRACLOGICS, et pour y etre il faudrait la voiture. UN CERCLE
+  // SANS ENTREE -- le defaut du 4 septembre 2026, qu'on ne reintroduit
+  // pas en corrigeant celui-ci.
   //
-  // Hors TRACLOGICS la carte reste visible mais dit a quoi elle sert.
+  // Se connecter au relais reste la facon NORMALE d'arriver en piste : le
+  // telephone est au bord de la ligne, la voiture est sur le circuit.
   var gr = document.getElementById('grp_relais');
-  if (gr) gr.style.display = '';
+  if (gr) gr.style.display = (appMode === 'dlg' && !rlConnecte) ? 'none' : '';
   var gn = document.getElementById('relaisNote');
   if (gn) gn.style.display = trlg ? 'none' : '';
 
