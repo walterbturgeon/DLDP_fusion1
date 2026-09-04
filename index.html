@@ -162,7 +162,17 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ⚠ AFFICHAGE SEULEMENT. Ne JAMAIS s'en servir pour decider quels
      reglages montrer : ca se decide par les CLES du JSON. Un module reste
      au champ doit rester pilotable meme si son numero est inconnu d'ici. -->
-<div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.65;">page fusion v2<span id="fwVer"></span></div>
+<!-- ⚠ LES DEUX VERSIONS, EN HAUT ET TOUJOURS VISIBLES.
+     C'est la reference qui repond a « suis-je a jour, ou est-ce le cache ? ».
+     La page dit la sienne des le chargement ; la voiture dit la sienne des
+     qu'elle repond, avec son instant de COMPILATION -- celui-la ne peut pas
+     etre oublie, il change a chaque build.
+     ⚠ Tant que la voiture n'a pas repondu on ecrit « non connectee », jamais
+     un vide : une ligne a moitie remplie se lit comme une ligne complete. -->
+<div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v2</b></span>
+  <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
+</div>
 </div>
 
 <script>
@@ -2958,6 +2968,21 @@ var CAPS = [
 ];
 
 function appliquerCapacites(j) {
+  // ⚠ LA VERSION SE REMPLIT ICI, dans la fonction qui RECOIT le JSON du
+  // module. Elle vivait dans refreshConfig(), juste avant l'appel : deux
+  // endroits pour une meme donnee, donc deux endroits a penser a corriger
+  // le jour ou l'un change. Ici, tout chemin qui applique les capacites
+  // met la version a jour, et aucun ne peut l'oublier.
+  //
+  // ⚠ ON NOMME L'APPAREIL, pas seulement le numero. « FUS.1.00 » tout seul
+  // ne dit pas DE QUOI c'est la version -- de la page, de la voiture, du
+  // relais ? Un numero sans son sujet se lit de travers au moment ou il
+  // compte.
+  var elFw = document.getElementById('fwVer');
+  if (elFw) elFw.innerHTML = j.fw
+    ? ('voiture : <b>' + String(j.fw).replace(/[<>&]/g, '') + '</b>')
+    : 'voiture : version inconnue';
+
   // Un DLAP n'est pas un DRAGLOG diminue : on bascule la page entiere et on
   // sort. La banniere "firmware plus ancien" n'aurait aucun sens ici.
   if (j.dev === 'DLAP') {
@@ -3056,8 +3081,6 @@ async function refreshConfig() {
   // ⚠ AVANT le retour anticipe du DLAP : les deux appareils envoient "fw",
   // et on veut la version affichee dans les deux cas. Place apres le
   // return, elle n'apparaitrait jamais pour le DLAP.
-  var elFw = document.getElementById('fwVer');
-  if (elFw) elFw.textContent = j.fw ? (' · ' + j.fw) : ' · firmware inconnu';
 
   // Le DLAP n'a aucun des champs qui suivent : on remplit son panneau et on
   // sort, sinon on ecrirait "undefined" partout.
