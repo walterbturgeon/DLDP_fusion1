@@ -237,7 +237,7 @@ function couleur(nom){
      mode TRLG, il n'y aurait plus aucune marche arrière : le maître est
      dans la voiture, et on ne pourrait plus jamais revenir à DRAGLOGICS.
 ================================================================== -->
-<div class="card large" id="grp_app" style="display:none;">
+<div class="card large" id="grp_app">
 <h2>Métier de l'appareil</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
   <button type="button" class="btn" id="btnAppDlg" style="margin-top:0;flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;" onclick="appDemander('dlg')">
@@ -277,8 +277,13 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
      toujours joindre la voiture pour reprendre la main, même quand le
      relais est ce qu'on regarde.
 ================================================================== -->
-<div class="card large" id="grp_relais" style="display:none;">
+<div class="card large" id="grp_relais">
 <h2>Relais TRLG</h2>
+<p class="small" id="relaisNote" style="margin:0 0 10px;opacity:.75;">
+  Le relais sert aux <b>tours de piste</b>. T'y connecter fait passer la page en
+  <b>TRACLOGICS</b>. ⚠ Le module de la voiture doit déjà être dans ce métier,
+  sinon il ignore le beacon et aucun tour ne sera détecté.
+</p>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
 <button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter le relais</button>
@@ -2219,8 +2224,22 @@ function appAfficher() {
   // arriere.
   var trlg = (appMode === 'trlg');
 
+  // ⚠ LA CARTE DU RELAIS RESTE TOUJOURS ATTEIGNABLE.
+  // Elle etait masquee hors du mode TRACLOGICS. Sur un telephone qui ne
+  // s'est jamais connecte a la voiture, cela fermait le seul chemin
+  // d'entree : pour voir le relais il fallait etre en TRACLOGICS, et pour
+  // y etre il fallait la voiture. UN CERCLE SANS ENTREE -- constate le
+  // 4 septembre 2026, et vider le cache n'y changeait rien.
+  //
+  // Se connecter au relais est au contraire la facon NORMALE d'arriver en
+  // piste : le telephone est au bord de la ligne, la voiture est sur le
+  // circuit. C'est cette connexion qui fait basculer la page.
+  //
+  // Hors TRACLOGICS la carte reste visible mais dit a quoi elle sert.
   var gr = document.getElementById('grp_relais');
-  if (gr) gr.style.display = trlg ? '' : 'none';
+  if (gr) gr.style.display = '';
+  var gn = document.getElementById('relaisNote');
+  if (gn) gn.style.display = trlg ? 'none' : '';
 
   var dlg = document.querySelectorAll('.dlg-only');
   for (var i = 0; i < dlg.length; i++) {
