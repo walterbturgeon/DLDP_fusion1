@@ -281,6 +281,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <h2>Relais TRLG</h2>
 <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter le relais</button>
+<button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter le relais</button>
 <button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Remettre les tours à zéro</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
 </div>
@@ -2339,8 +2340,9 @@ async function relaisConnecter() {
     });
     rlQuitte = false;
     rlDevice.addEventListener('gattserverdisconnected', function () {
-      if (!rlQuitte) rlReconnexion();
-      else rlEtat('Déconnecté.');
+      rlCmdChar = null;
+      if (!rlQuitte) { rlBoutons(false); rlReconnexion(); }
+      else { rlBoutons(false); rlEtat('Déconnecté du relais.'); }
     });
     var srv = await rlDevice.gatt.connect();
     await rlAttacher(srv);
@@ -2358,6 +2360,53 @@ async function rlAttacher(server) {
   rlEtat('Connecté à ' + (rlDevice.name || 'RELAY') + '. En attente d’un tour...');
   var b = document.getElementById('relaisBloc');
   if (b) b.style.display = '';
+
+  // ⚠ SE CONNECTER AU RELAIS FAIT BASCULER LA PAGE EN TRACLOGICS.
+  // Le relais n'existe que pour les tours de piste : s'y connecter est une
+  // preuve suffisante du metier. Sans cela il fallait joindre la voiture
+  // AVANT le relais, ce qui est impossible en piste -- la voiture est sur
+  // le circuit, le telephone est au bord de la ligne.
+  //
+  // ⚠ CE N'EST QU'UN AFFICHAGE, PAS UNE DECISION. Le maitre reste dans la
+  // voiture : des qu'elle repond, appliquerCapacites() ecrase cette valeur
+  // par la sienne. La page ne change JAMAIS le metier du module toute seule.
+  appMode = 'trlg';
+  try { localStorage.setItem('dl_app_mode', 'trlg'); } catch (e) {}
+  appAfficher();
+  rlBoutons(true);
+}
+
+// Etat des deux boutons du relais. Le bouton de connexion et celui de
+// deconnexion ne sont JAMAIS visibles ensemble : deux boutons contraires
+// cote a cote font hesiter, et l'hesitation en piste coute des tours.
+function rlBoutons(connecte) {
+  var on  = document.getElementById('btnRelais');
+  var off = document.getElementById('btnRelaisOff');
+  if (on)  on.style.display  = connecte ? 'none' : '';
+  if (off) off.style.display = connecte ? '' : 'none';
+}
+
+// =====================================================================
+// DECONNEXION DU RELAIS -- le chemin de retour vers la voiture
+// =====================================================================
+// ⚠ SANS ELLE, IL N'Y A PAS DE MARCHE ARRIERE. Une fois le relais
+// connecte, la page se reconnecte toute seule a chaque coupure : c'est
+// voulu, le relais coupe son BLE entre les tours. Mais cette meme
+// obstination empeche de le lacher pour aller reprendre la voiture et
+// revenir en DRAGLOGICS.
+//
+// `rlQuitte` dit a la boucle de reconnexion de s'arreter. Sans ce
+// drapeau, la deconnexion durerait deux secondes et la page se
+// rebrancherait toute seule -- l'utilisateur croirait le bouton casse.
+function relaisDeconnecter() {
+  rlQuitte = true;
+  try {
+    if (rlDevice && rlDevice.gatt && rlDevice.gatt.connected) rlDevice.gatt.disconnect();
+  } catch (e) {}
+  rlCmdChar = null;
+  rlBoutons(false);
+  rlEtat('Déconnecté du relais. Tu peux maintenant connecter la voiture pour changer de métier.');
+  appAfficher();
 }
 
 async function rlReconnexion() {
