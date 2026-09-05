@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v19</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v20</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3181,11 +3181,116 @@ function rlSatBascule() {
   rlSatVoulu = cb ? cb.checked : false;
   if (!rlSatVoulu) {
     rlSatImg = null; rlSatCle = '';
+    liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
     rlSatEtat('');
-    if (rlLapVu) rlDessinerTrace(rlLapVu.num);
+    if (liveVue)      rlDessinerLiveCarte();
+    else if (rlLapVu) rlDessinerTrace(rlLapVu.num);
     return;
   }
-  rlSatCharger();
+  // ⚠ LE LIVE A SON PROPRE CHEMIN. rlSatCharger() sort tout de suite sans
+  // tour affiche : en live il n'y en a aucun, et la case cochee ne faisait
+  // RIEN, sans un mot d'explication.
+  if (liveVue) { liveSatEchecs = 0; rlLiveSatMaj(true); rlDessinerLiveCarte(); }
+  else         rlSatCharger();
+}
+
+// =====================================================================
+// [v20] LE FOND SATELLITE DU LIVE
+// =====================================================================
+// ⚠⚠ LE CADRAGE EST FIGE, PAS SUIVI. En live la trace grandit a chaque
+// paquet : recadrer a chaque fois demanderait 5 images par seconde a Esri
+// et le fond clignoterait. On fige donc un cadre plus large que la trace,
+// et on ne recharge QUE quand la trace en sort.
+//
+// ⚠ TANT QU'UNE IMAGE EST AFFICHEE, LA TRACE EST PROJETEE DANS LE CADRE DE
+// CETTE IMAGE, jamais dans le cadrage automatique. Deux cadrages differents
+// poseraient la piste a cote du trace, et ce decalage ne se verrait PAS --
+// on croirait la voiture passee dans le gazon.
+var liveSatCadre   = null;   // {cx, cy, demiL, demiH, w, h} en metres
+var liveSatImg     = null;
+var liveSatCle     = '';
+var liveSatCharge  = false;  // une requete est-elle en vol
+var liveSatT       = 0;      // instant du dernier chargement
+var liveSatEchecs  = 0;
+var LIVE_SAT_DELAI = 6000;   // ms entre deux chargements, au minimum
+var LIVE_SAT_MARGE = 0.72;   // la trace doit rester sous 72 % du demi-cadre
+
+// ⚠ ETENDUE MINIMALE DE LA CARTE LIVE : 50 m de cote, demande de
+// l'utilisateur. A l'arret la trace fait quelques metres : sans plancher,
+// l'echelle deviendrait enorme et le moindre tremblement du GPS
+// ressemblerait a une trajectoire. Ce plancher vaut pour le cadrage
+// automatique ET pour le cadre du fond satellite -- deux planchers
+// differents decaleraient l'image et le trace.
+var LIVE_ETENDUE_MIN = 50;   // metres, cote complet
+
+function rlLiveSatMaj(force) {
+  if (!rlSatVoulu || !liveVue) return;
+  var c = document.getElementById('speedMap');
+  if (!c || liveTrace.length < 2) return;
+  if (!liveOrigine) { rlSatEtat('Pas de fix GPS — pas de fond possible.'); return; }
+  // ⚠ TROIS ECHECS DE SUITE ET ON ARRETE. Sans ce frein, une tablette hors
+  // reseau relancerait une requete toutes les six secondes, en piste,
+  // exactement quand la batterie compte.
+  if (liveSatEchecs >= 3) return;
+  if (liveSatCharge) return;
+
+  var W = c.clientWidth || 600, H = Math.round(W * 0.66);
+  var xs = liveTrace.map(function (p) { return p.dx; });
+  var ys = liveTrace.map(function (p) { return p.dy; });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+
+  var f = liveSatCadre, besoin = force || !f || f.w !== W || f.h !== H;
+  if (!besoin) {
+    // La trace sort-elle du cadre figé ?
+    besoin = (x0 < f.cx - f.demiL * LIVE_SAT_MARGE) || (x1 > f.cx + f.demiL * LIVE_SAT_MARGE)
+          || (y0 < f.cy - f.demiH * LIVE_SAT_MARGE) || (y1 > f.cy + f.demiH * LIVE_SAT_MARGE);
+  }
+  if (!besoin) return;
+  var now = Date.now();
+  if (!force && now - liveSatT < LIVE_SAT_DELAI) return;
+
+  // Un cadre 40 % plus large que la trace, jamais moins de 50 m de cote.
+  var demiL = Math.max((x1 - x0) * 0.70, LIVE_ETENDUE_MIN / 2);
+  var demiH = Math.max((y1 - y0) * 0.70, LIVE_ETENDUE_MIN / 2);
+  // ⚠ LE CADRE SUIT LE RAPPORT DU CANVAS. Sans ca, l'echelle differerait
+  // entre les deux axes et l'image serait etiree sous une trace qui ne
+  // l'est pas.
+  if (demiL / demiH < W / H) demiL = demiH * W / H;
+  else                       demiH = demiL * H / W;
+
+  var cadre = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2,
+                demiL: demiL, demiH: demiH, w: W, h: H };
+  var R = 6371000, rad = Math.PI / 180;
+  function lat(y) { return liveOrigine.lat + (y / R) / rad; }
+  function lon(x) { return liveOrigine.lon + (x / (R * Math.cos(liveOrigine.lat * rad))) / rad; }
+  var url = rlSatUrl(lat(cadre.cy - demiH), lon(cadre.cx - demiL),
+                     lat(cadre.cy + demiH), lon(cadre.cx + demiL),
+                     Math.round(W), Math.round(H));
+  var cle = [Math.round(cadre.cx), Math.round(cadre.cy),
+             Math.round(demiL), Math.round(demiH), W, H].join('|');
+
+  liveSatCharge = true; liveSatT = now;
+  rlSatEtat('Chargement du fond...');
+  var im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = function () {
+    liveSatCharge = false; liveSatEchecs = 0;
+    liveSatImg = im; liveSatCle = cle; liveSatCadre = cadre;
+    rlSatEtat('');
+    if (liveVue) rlDessinerLiveCarte();
+  };
+  // ⚠ UN ECHEC SE DIT. Une case cochee sans image ressemble a une fonction
+  // cassee, ou pire a un fond qu'on croit present alors qu'il n'y en a pas.
+  im.onerror = function () {
+    liveSatCharge = false; liveSatEchecs++;
+    liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
+    rlSatEtat(liveSatEchecs >= 3
+      ? 'Fond satellite indisponible — arrêté après 3 échecs. Décoche et recoche pour réessayer.'
+      : 'Fond satellite indisponible (pas de réseau ?).');
+    if (liveVue) rlDessinerLiveCarte();
+  };
+  im.src = url;
 }
 
 function rlSatCharger() {
@@ -3527,13 +3632,45 @@ function rlDessinerLiveCarte() {
   var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
   var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
   var pad = 24;
-  // ⚠ UNE ECHELLE UNIQUE POUR LES DEUX AXES. Deux echelles differentes
-  // etireraient la trajectoire et rendraient un virage rond pour un ovale.
-  var ech = Math.min((W - 2 * pad) / Math.max(1, x1 - x0),
-                     (H - 2 * pad) / Math.max(1, y1 - y0));
-  var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+
+  // [v20] Le fond satellite, dessine EN PREMIER pour passer sous le trace.
+  // ⚠⚠ QUAND IL Y A UNE IMAGE, C'EST ELLE QUI IMPOSE LE CADRAGE. Garder le
+  // cadrage automatique poserait la piste a cote du trace, et ce decalage
+  // ne se verrait pas -- on croirait la voiture passee dans le gazon.
+  var fond = (rlSatVoulu && liveSatImg && liveSatCadre
+              && liveSatCadre.w === W && liveSatCadre.h === H) ? liveSatCadre : null;
+  // ⚠⚠ SI LA TRACE NE TIENT PAS DANS L'IMAGE, ON ABANDONNE L'IMAGE.
+  // Le cadre est fige, la trace grandit : elle finit par en sortir, et le
+  // recadrage attend le delai anti-rafale. Pendant ce temps, garder
+  // l'image COUPERAIT la trajectoire hors du canvas. Mieux vaut voir toute
+  // la trajectoire sans fond qu'une trajectoire tronquee sur un fond.
+  if (fond) {
+    var deborde = (x0 < fond.cx - fond.demiL) || (x1 > fond.cx + fond.demiL)
+               || (y0 < fond.cy - fond.demiH) || (y1 > fond.cy + fond.demiH);
+    // ⚠ UN FOND QUI DISPARAIT SANS UN MOT RESSEMBLE A UNE PANNE.
+    if (deborde) { fond = null; if (!liveSatCharge) rlSatEtat('Trace sortie du fond — recadrage...'); }
+  }
+  var ech, cx, cy;
+  if (fond) {
+    ech = W / (2 * fond.demiL);
+    cx  = fond.cx; cy = fond.cy;
+  } else {
+    // ⚠ UNE ECHELLE UNIQUE POUR LES DEUX AXES. Deux echelles differentes
+    // etireraient la trajectoire et rendraient un virage rond pour un ovale.
+    // ⚠ ET UN PLANCHER DE 50 m : a l'arret, la trace fait quelques metres.
+    // Sans plancher l'echelle exploserait et le bruit du GPS ressemblerait
+    // a une trajectoire.
+    ech = Math.min((W - 2 * pad) / Math.max(LIVE_ETENDUE_MIN, x1 - x0),
+                   (H - 2 * pad) / Math.max(LIVE_ETENDUE_MIN, y1 - y0));
+    cx = (x0 + x1) / 2; cy = (y0 + y1) / 2;
+  }
   var X = function (v) { return W / 2 + (v - cx) * ech; };
   var Y = function (v) { return H / 2 - (v - cy) * ech; };
+  if (fond) {
+    g.globalAlpha = 0.85;
+    g.drawImage(liveSatImg, 0, 0, W, H);
+    g.globalAlpha = 1;
+  }
 
   var vs = liveTrace.map(function (p) { return p.kmh; });
   var vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
@@ -3567,6 +3704,11 @@ function rlDessinerLiveCarte() {
   if (lg) lg.textContent = 'Vert = lent, rouge = rapide ('
     + Math.round(uniVit(vmin)) + ' à ' + Math.round(uniVit(vmax)) + ' '
     + uniVitU() + '). Trace en direct, pas un tour.';
+
+  // ⚠ EN DERNIER, APRES LE DESSIN. rlLiveSatMaj() peut lancer un
+  // chargement qui redessinera la carte : l'appeler avant ferait dessiner
+  // deux fois pour rien.
+  rlLiveSatMaj(false);
 }
 
 // =====================================================================
@@ -3659,6 +3801,10 @@ async function rlLiveBascule() {
       // chercher, et il croirait que rien n'arrive.
       liveTrace = []; liveOrigine = null;
       liveCanRaz(); rlLiveCanRendre();
+      // ⚠ LE CADRE SATELLITE PART AUSSI. Il est cale sur l'ancienne
+      // origine ; le garder poserait une image d'ailleurs sous la
+      // nouvelle trace, sans que rien ne le dise.
+      liveSatImg = null; liveSatCle = ''; liveSatCadre = null; liveSatEchecs = 0;
       rlVoirLive();
       rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
     } else {
