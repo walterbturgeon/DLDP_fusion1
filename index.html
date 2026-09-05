@@ -207,10 +207,23 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
    ⚠ `touch-action:none` est OBLIGATOIRE : sans lui, le navigateur prend le
    glissement pour un defilement et la ligne ne bouge jamais sur tablette,
    l'appareil meme dont on se sert en piste. */
+/* ⚠ LA POIGNEE DOIT ETRE GROSSE. Un caractere de 15 px se rate au doigt, en
+   piste, avec des gants. 44 px de large et 12 px de marge verticale : la
+   cible tient dans le pouce. */
 .chPoignee{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
-  opacity:.45;padding:5px 8px 5px 0;line-height:1;font-size:15px;}
-.chPoignee:active{cursor:grabbing;opacity:.9;}
-tr.chGlisse{opacity:.45;background:var(--line);}
+  opacity:.5;padding:10px 12px 10px 2px;line-height:1;font-size:19px;
+  min-width:34px;text-align:center;}
+.chPoignee:active{cursor:grabbing;opacity:1;}
+tr.chGlisse{opacity:.55;background:var(--line);outline:2px solid var(--acc);}
+
+/* ⚠⚠ PENDANT LE GLISSEMENT, PLUS AUCUN GESTE N'APPARTIENT AU NAVIGATEUR.
+   Le tableau vit dans un conteneur `overflow-x:auto` : un doigt qui devie
+   vers la droite lancait SON defilement horizontal, le navigateur reprenait
+   le pointeur et envoyait `pointercancel`. Le glissement s'arretait net des
+   qu'on passait sur une autre case. Tant que la classe est posee, ni pan ni
+   zoom ne peuvent voler le geste. Elle est retiree au relachement. */
+body.chDragActif, body.chDragActif *{touch-action:none !important;}
+body.chDragActif{user-select:none;-webkit-user-select:none;}
 </style>
 </head>
 <body>
@@ -278,7 +291,7 @@ tr.chGlisse{opacity:.45;background:var(--line);}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v24</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v25</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -2919,7 +2932,15 @@ function chPoigneeDown(ev) {
   chDragTr = tr; chDragBody = tr.parentNode; chDragPid = ev.pointerId;
   chDragY = ev.clientY; chDragYDepart = ev.clientY; chDragParti = false;
   tr.classList.add('chGlisse');
-  try { h.setPointerCapture(ev.pointerId); } catch (e) {}
+  // ⚠ AVANT TOUT LE RESTE : on retire au navigateur le droit de prendre le
+  // geste pour un defilement. Sans ca, une deviation vers la droite lance
+  // le defilement horizontal du tableau et le geste est annule.
+  document.body.classList.add('chDragActif');
+  // ⚠ L'ECHEC DE CAPTURE NE DOIT PAS ETRE MUET. Sans capture, les
+  // evenements suivent l'element sous le doigt : le geste devient fragile,
+  // et on chercherait la cause ailleurs.
+  try { h.setPointerCapture(ev.pointerId); }
+  catch (e) { console.warn('[ordre] capture du pointeur refusee :', e.message); }
 }
 
 function chPoigneeMove(ev) {
@@ -2997,6 +3018,7 @@ function chDragDefiler(y) {
 
 function chPoigneeUp(ev) {
   if (!chDragTr) return;
+  document.body.classList.remove('chDragActif');
   chDragTr.classList.remove('chGlisse');
   var lignes = chDragBody.children, ordre = [];
   for (var i = 0; i < lignes.length; i++) {
@@ -3040,6 +3062,16 @@ document.addEventListener('pointercancel', chPoigneeUp);
 // `pointercancel` n'arrivent toujours. Sans ce filet, `chDragTr` resterait
 // pose et le tableau se figerait pour de bon, sans un mot a l'ecran.
 document.addEventListener('lostpointercapture', chPoigneeUp);
+// ⚠⚠ LE FILET DECISIF. Certains navigateurs figent leur decision de
+// defilement au tout premier `touchstart` et ignorent un `touch-action`
+// pose apres coup. Ce `preventDefault` sur `touchmove`, lui, agit toujours :
+// tant qu'une ligne est tenue, AUCUN defilement natif ne peut demarrer et
+// le geste ne peut plus etre annule en cours de route.
+// ⚠ `{passive:false}` est obligatoire -- sans lui le navigateur ignore le
+// preventDefault, en silence.
+document.addEventListener('touchmove', function (ev) {
+  if (chDragTr) ev.preventDefault();
+}, { passive: false });
 
 const LIMIT_FLAGS = [
   "RPM Limit", "MAP Limit", "Speed Limit", "Maximum Ignition",
