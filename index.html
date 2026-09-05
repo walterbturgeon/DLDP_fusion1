@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v29</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v30</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3768,9 +3768,24 @@ function rlLiveSatMaj(force) {
   var now = Date.now();
   if (!force && now - liveSatT < LIVE_SAT_DELAI) return;
 
-  // Un cadre 40 % plus large que la trace, jamais moins de 50 m de cote.
-  var demiL = Math.max((x1 - x0) * 0.70, LIVE_ETENDUE_MIN / 2);
-  var demiH = Math.max((y1 - y0) * 0.70, LIVE_ETENDUE_MIN / 2);
+  // ⚠⚠ LE CADRE DOIT PRENDRE DE L'AVANCE SUR LA VOITURE. Bati sur la seule
+  // trace connue, il naissait a 50 m de cote -- la taille des deux premiers
+  // points. Une image d'Esri met plusieurs secondes a arriver, et pendant
+  // ce temps la voiture est deja sortie du cadre : le fond etait abandonne
+  // aussitot recu, encore et encore. On reserve donc la distance parcourue
+  // en 12 s a la vitesse la plus haute vue.
+  var vmax = 0;
+  for (var t = 0; t < liveTrace.length; t++) if (liveTrace[t].kmh > vmax) vmax = liveTrace[t].kmh;
+  var reserve = Math.min(vmax / 3.6 * 12, 800);   // plafond : 1600 m de cote
+  var demiL = Math.max((x1 - x0) * 0.70, LIVE_ETENDUE_MIN / 2, reserve);
+  var demiH = Math.max((y1 - y0) * 0.70, LIVE_ETENDUE_MIN / 2, reserve);
+  // ⚠ LE CADRE NE RETRECIT JAMAIS pendant un live. Sinon, un ralentissement
+  // le ferait se resserrer, et la reprise de vitesse le ferait deborder
+  // aussitot : le fond clignoterait au rythme des virages.
+  if (liveSatCadre) {
+    demiL = Math.max(demiL, liveSatCadre.demiL);
+    demiH = Math.max(demiH, liveSatCadre.demiH);
+  }
   // ⚠ LE CADRE SUIT LE RAPPORT DU CANVAS. Sans ca, l'echelle differerait
   // entre les deux axes et l'image serait etiree sous une trace qui ne
   // l'est pas.
