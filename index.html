@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v31</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v32</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -498,6 +498,10 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
       <input type="checkbox" id="satOn" onchange="rlSatBascule()" style="width:auto;margin:0;">
       Fond satellite
     </label>
+    <!-- ⚠ Apres trois echecs la page s'arrete d'essayer, et il fallait
+         decocher puis recocher pour repartir. Ce bouton le fait d'un coup. -->
+    <button type="button" class="btn btn2" id="btnSatRetry" style="margin:0;padding:5px 12px;font-size:13px;width:auto;"
+            onclick="rlSatReessayer()">Réessayer</button>
     <span id="satEtat" class="small" style="opacity:.7;"></span>
   </div>
   <canvas id="speedMap" style="width:100%;margin-top:10px;border-radius:10px;display:none;touch-action:none;cursor:crosshair;"
@@ -971,6 +975,18 @@ GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
   <button type="button" class="btn btn2" id="btnDiagRaz" style="margin-top:0;width:auto;" onclick="diagEffacer()">Effacer</button>
   <span id="diagEtat" class="small" style="opacity:.75;"></span>
 </div>
+
+<!-- [v32] ⚠ Le navigateur ne dit PAS pourquoi une image echoue. Ce test
+     essaie les chemins un par un, sur l'appareil qui echoue. -->
+<h2 style="font-size:1em;margin-top:20px;">Éprouver le fond satellite</h2>
+<p class="small">
+  Le message « fond satellite : 3 échecs » ne dit pas <b>pourquoi</b> :
+  le navigateur ne donne aucune raison quand une image n'arrive pas.
+  Ce test essaie les chemins un par un et écrit ce qu'il voit.
+</p>
+<button type="button" class="btn btn2" style="margin-top:0;width:auto;" onclick="diagTestSat()">Tester le fond satellite</button>
+<pre id="diagSatSortie" class="small" style="margin-top:10px;white-space:pre-wrap;word-break:break-all;
+     background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:1.4em;"></pre>
 <p class="small" style="margin:12px 0 0;opacity:.85;">
   ⚠ <b>Le fichier contient ta position de départ et ton parcours.</b>
   Ne l'envoie qu'à quelqu'un à qui tu acceptes de les donner.
@@ -3304,6 +3320,77 @@ function diagTexte() {
   return L.join('\n');
 }
 
+// =====================================================================
+// [v32] EPROUVER LE FOND SATELLITE, DEPUIS L'APPAREIL QUI ECHOUE
+// =====================================================================
+// ⚠ « Fond satellite : 3 echecs » ne dit PAS pourquoi. Le navigateur ne
+// donne aucune raison quand une image echoue -- ni code, ni message. Le
+// meme code charge ici et echoue la-bas, et deviner fait perdre des
+// seances. Ce test essaie les chemins un par un et RAPPORTE ce qu'il voit.
+async function diagTestSat() {
+  var L = [];
+  function dire(t) { L.push(t); var e = document.getElementById('diagSatSortie'); if (e) e.textContent = L.join('\n'); }
+
+  dire('Test en cours...');
+  L = [];
+
+  // 1. Le service worker : lequel controle cette page ?
+  try {
+    if (!('serviceWorker' in navigator)) dire('service worker : pas gere par ce navigateur');
+    else {
+      var ctrl = navigator.serviceWorker.controller;
+      dire('service worker : ' + (ctrl ? 'ACTIF (' + ctrl.scriptURL.split('/').pop() + ', ' + ctrl.state + ')' : 'aucun'));
+      var regs = await navigator.serviceWorker.getRegistrations();
+      dire('  enregistrements : ' + regs.length);
+    }
+  } catch (e) { dire('service worker : lecture impossible (' + e.message + ')'); }
+
+  // 2. Quel cache est en place ? Un cache d'une version ancienne explique
+  //    qu'un correctif publie ne serve a rien.
+  try {
+    var noms = await caches.keys();
+    dire('caches : ' + (noms.length ? noms.join(', ') : 'aucun'));
+  } catch (e) { dire('caches : lecture impossible'); }
+
+  // 3. L'URL exacte qu'on demande, sur un cadre connu.
+  var url = rlSatUrl(45.54, -72.99, 45.55, -72.98, 320, 210);
+  dire('URL demandée : ' + url.slice(0, 120) + '...');
+
+  // 4. Une image SANS crossOrigin -- le chemin que la page utilise.
+  dire('image sans crossOrigin : ' + await diagEssaiImage(url, false));
+  // 5. Une image AVEC crossOrigin -- l'ancien chemin, pour comparer.
+  dire('image avec crossOrigin : ' + await diagEssaiImage(url, true));
+
+  // 6. Un fetch direct : lui, rend un code HTTP et un type.
+  try {
+    var r = await fetch(url, { mode: 'no-cors' });
+    dire('fetch no-cors : type ' + r.type + ', statut ' + r.status);
+  } catch (e) { dire('fetch no-cors : ECHEC ' + e.message); }
+  try {
+    var r2 = await fetch(url, { mode: 'cors' });
+    dire('fetch cors : statut ' + r2.status + ', type ' + r2.type);
+  } catch (e) { dire('fetch cors : ECHEC ' + e.message); }
+
+  dire('--- fin du test ---');
+  diagNoter('Test du fond satellite : ' + L.join(' | '));
+}
+
+function diagEssaiImage(url, croise) {
+  return new Promise(function (res) {
+    var t0 = Date.now(), im = new Image();
+    // ⚠ Un essai sans limite de temps reste « en cours » pour toujours quand
+    // le serveur ne repond ni oui ni non, et le test paraitrait fige.
+    var fini = false;
+    var minut = setTimeout(function () { if (!fini) { fini = true; res('AUCUNE REPONSE apres 15 s'); } }, 15000);
+    if (croise) im.crossOrigin = 'anonymous';
+    im.onload = function () { if (fini) return; fini = true; clearTimeout(minut);
+      res('recue en ' + (Date.now() - t0) + ' ms, ' + im.naturalWidth + 'x' + im.naturalHeight + ' px'); };
+    im.onerror = function () { if (fini) return; fini = true; clearTimeout(minut);
+      res('ECHEC apres ' + (Date.now() - t0) + ' ms'); };
+    im.src = url + '&_t=' + Date.now();   // on evite le cache du navigateur
+  });
+}
+
 function diagNomFichier() {
   var d = new Date();
   function n2(v) { return (v < 10 ? '0' : '') + v; }
@@ -3741,10 +3828,31 @@ var LIVE_SAT_MARGE = 0.72;   // la trace doit rester sous 72 % du demi-cadre
 // differents decaleraient l'image et le trace.
 var LIVE_ETENDUE_MIN = 50;   // metres, cote complet
 
+// [v32] Repartir a zero apres les trois echecs, sans decocher la case.
+function rlSatReessayer() {
+  liveSatEchecs = 0; liveSatCharge = false; liveSatT = 0;
+  liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
+  rlSatImg = null; rlSatCle = '';
+  if (!rlSatVoulu) {
+    var cb = document.getElementById('satOn');
+    if (cb) cb.checked = true;
+    rlSatBascule();
+    return;
+  }
+  rlSatEtat('Nouvel essai...');
+  if (liveVue) { rlLiveSatMaj(true); rlDessinerLiveCarte(); }
+  else         rlSatCharger();
+}
+
 function rlLiveSatMaj(force) {
   if (!rlSatVoulu || !liveVue) return;
   var c = document.getElementById('speedMap');
   if (!c || liveTrace.length < 2) return;
+  // ⚠⚠ UNE LARGEUR NULLE FABRIQUE UNE URL DE NaN. Si le canvas n'est pas
+  // encore mis en page, `clientWidth` vaut 0 : la division par W donne NaN,
+  // la bbox part en « NaN,NaN,NaN,NaN », et le serveur refuse. On voyait
+  // alors « fond satellite : 3 echecs » sans qu'aucun reseau soit en cause.
+  if (!c.clientWidth) return;
   if (!liveOrigine) { rlSatEtat('Pas de fix GPS — pas de fond possible.'); return; }
   // ⚠ TROIS ECHECS DE SUITE ET ON ARRETE. Sans ce frein, une tablette hors
   // reseau relancerait une requete toutes les six secondes, en piste,
@@ -3802,6 +3910,14 @@ function rlLiveSatMaj(force) {
                      Math.round(W), Math.round(H));
   var cle = [Math.round(cadre.cx), Math.round(cadre.cy),
              Math.round(demiL), Math.round(demiH), W, H].join('|');
+
+  // ⚠⚠ ON NE DEMANDE JAMAIS UNE URL QUI PORTE UN NaN. Une seule valeur
+  // invalide fait refuser la requete, et l'echec ressemble alors a une
+  // panne de reseau. Mieux vaut le DIRE que d'user les trois essais.
+  if (url.indexOf('NaN') >= 0 || url.indexOf('Infinity') >= 0) {
+    rlSatEtat('Cadrage impossible (valeur invalide) — fond non demandé.');
+    return;
+  }
 
   liveSatCharge = true; liveSatT = now;
   rlSatEtat('Chargement du fond...');
