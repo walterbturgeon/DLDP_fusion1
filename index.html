@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v18</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v19</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -408,6 +408,35 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <div id="liveBloc" style="margin-top:14px;display:none;">
   <div class="grid" id="liveGrid"></div>
   <p class="small" id="liveNote" style="margin:10px 0 0;opacity:.75;"></p>
+
+  <!-- [v19] LES CANAUX CAN DU LIVE.
+       ⚠ Le module envoie 4 canaux par paquet et tourne sur les 38. A 5 Hz,
+       chaque canal revient donc toutes les 2 secondes. Le min et le max
+       ci-dessous sont ceux des ECHANTILLONS RECUS, pas ceux du tour : un
+       pic entre deux envois n'est pas vu. L'avertissement sous le tableau
+       le dit, et il ne doit pas etre retire. -->
+  <div id="liveCanaux" style="margin-top:16px;display:none;">
+    <h2 style="font-size:1em;">Canaux CAN en direct</h2>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap;">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px 6px 0;">Canal</th>
+          <th style="text-align:right;padding:6px 10px;">Valeur</th>
+          <th style="text-align:right;padding:6px 10px;">Min vu</th>
+          <th style="text-align:right;padding:6px 10px;">Max vu</th>
+          <th style="text-align:right;padding:6px 10px;">Ech.</th>
+          <th style="text-align:left;padding:6px 0 6px 10px;">Unite</th>
+        </tr></thead>
+        <tbody id="liveCanTbody"></tbody>
+      </table>
+    </div>
+    <p class="small" style="margin:10px 0 0;opacity:.85;">
+      &#9888; <b>Min et max des échantillons reçus, pas du tour.</b>
+      Le module envoie 4 canaux par paquet et tourne sur les 38 : chaque canal
+      revient environ toutes les 2 secondes. Un pic entre deux envois n'est pas
+      vu. La vitesse et la position, elles, sont dans <b>chaque</b> paquet.
+    </p>
+  </div>
 </div>
 <div id="relaisBloc" style="margin-top:14px;display:none;">
   <div class="grid" id="relaisGrid"></div>
@@ -3414,6 +3443,16 @@ var liveGigueMax = 0;
 var liveDernier = null;
 var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
 
+// [v19] LES CANAUX CAN RECUS EN DIRECT
+// Une case par canal, ou null tant que le canal n'est jamais arrive.
+// ⚠ min et max sont ceux des ECHANTILLONS RECUS. Le module tourne sur les
+// 38 canaux a raison de 4 par paquet : a 5 Hz, un canal revient toutes les
+// 2 secondes. Nommer ces bornes « min du tour » serait un mensonge, et la
+// page l'ecrit noir sur blanc sous le tableau.
+var liveCan = [];            // [i] = {der, min, max, n} ou null
+function liveCanRaz() { liveCan = new Array(CHANNELS.length).fill(null); }
+liveCanRaz();
+
 // =====================================================================
 // LA CARTE DU LIVE  --  sa PROPRE trace, sans attendre un tour
 // =====================================================================
@@ -3619,6 +3658,7 @@ async function rlLiveBascule() {
       // sur Live veut VOIR le live -- le laisser sur un tour l'obligerait a
       // chercher, et il croirait que rien n'arrive.
       liveTrace = []; liveOrigine = null;
+      liveCanRaz(); rlLiveCanRendre();
       rlVoirLive();
       rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
     } else {
@@ -3628,6 +3668,33 @@ async function rlLiveBascule() {
   } catch (e) {
     rlEtat('La commande live n’est pas partie : ' + e.message);
   }
+}
+
+// [v19] Le tableau des canaux CAN vus en direct.
+// ⚠ ON N'AFFICHE QUE LES CANAUX DEJA ARRIVES. Montrer les 38 lignes avec des
+// tirets ferait croire a une panne pendant les deux premieres secondes, le
+// temps que la rotation ait fait un tour complet.
+function rlLiveCanRendre() {
+  var tb = document.getElementById('liveCanTbody');
+  var bloc = document.getElementById('liveCanaux');
+  if (!tb) return;
+  var lignes = '', vus = 0;
+  for (var i = 0; i < CHANNELS.length; i++) {
+    var c = liveCan[i];
+    if (!c) continue;
+    vus++;
+    var ch = CHANNELS[i], dec = ch.txScale >= 100 ? 3 : (ch.txScale >= 10 ? 1 : 0);
+    lignes += '<tr>'
+      + '<td style="padding:5px 10px 5px 0;">' + ch.name + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;"><b>' + c.der.toFixed(dec) + '</b></td>'
+      + '<td style="text-align:right;padding:5px 10px;">' + c.min.toFixed(dec) + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;">' + c.max.toFixed(dec) + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;opacity:.7;">' + c.n + '</td>'
+      + '<td style="padding:5px 0 5px 10px;opacity:.7;">' + ch.unit + '</td>'
+      + '</tr>';
+  }
+  tb.innerHTML = lignes;
+  if (bloc) bloc.style.display = vus ? '' : 'none';
 }
 
 function rlDecodeLive(b) {
@@ -3683,6 +3750,28 @@ function rlDecodeLive(b) {
       hy: hy7 / 63
     };
   }
+  // ---- [v19] les 4 canaux CAN du paquet ----
+  // ⚠ ON TESTE LA LONGUEUR, PAS LA VERSION, comme pour la ligne virtuelle.
+  // Un paquet de 20 ou de 26 octets vient d'un firmware anterieur : il doit
+  // continuer d'etre lu, sans canal et sans erreur.
+  // ⚠ 0xFF EN INDICE = case inutilisee. La lire comme le canal 0 afficherait
+  // un regime moteur faux.
+  if (b.length >= 38) {
+    for (var k = 0; k < 4; k++) {
+      var off = 26 + k * 3, idx = b[off];
+      if (idx === 0xFF || idx >= CHANNELS.length) continue;
+      var brut = dv.getInt16(off + 1, true) / CHANNELS[idx].txScale;
+      var c = liveCan[idx];
+      if (!c) liveCan[idx] = { der: brut, min: brut, max: brut, n: 1 };
+      else {
+        c.der = brut; c.n++;
+        if (brut < c.min) c.min = brut;
+        if (brut > c.max) c.max = brut;
+      }
+    }
+    rlLiveCanRendre();
+  }
+
   // ---- accumuler la trace du live, dans SON repere ----
   if (valide) {
     if (!liveOrigine) liveOrigine = { lat: lat, lon: lon };
