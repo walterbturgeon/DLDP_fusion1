@@ -300,39 +300,8 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ⚠ NON EPROUVE SUR UN VRAI VEHICULE au moment ou ces lignes sont
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
-<!-- =====================================================================
-     [v27] LE JOURNAL DE DIAGNOSTIC -- EN BAS DE LA PAGE, ET SANS `dlg-only`
-     NI `trlg-only`. C'est APRES coup qu'on veut l'envoyer, souvent une fois
-     tout debranche : le cacher avec le metier le rendrait introuvable
-     precisement quand il sert.
-     ===================================================================== -->
-<div class="card">
-<h2>Journal de diagnostic</h2>
-<p class="small">
-  Prépare un fichier texte : versions lues, paquets reçus et perdus, tours,
-  canaux CAN vus, les messages d'état et la trace en mètres.
-  Le journal <b>survit à un rechargement</b> de la page.
-</p>
-<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-  <button type="button" class="btn" id="btnDiag" style="margin-top:0;width:auto;" onclick="diagEnvoyer()">Envoyer le journal</button>
-  <button type="button" class="btn btn2" id="btnDiagRaz" style="margin-top:0;width:auto;" onclick="diagEffacer()">Effacer</button>
-  <span id="diagEtat" class="small" style="opacity:.75;"></span>
-</div>
-<p class="small" style="margin:12px 0 0;opacity:.85;">
-  ⚠ <b>Le fichier contient ta position de départ et ton parcours.</b>
-  Ne l'envoie qu'à quelqu'un à qui tu acceptes de les donner.
-</p>
-<p class="small" style="margin:8px 0 0;opacity:.85;">
-  ⚠ <b>Un courriel ne peut pas joindre un fichier tout seul</b> — le protocole
-  ne le prévoit pas, sur aucun appareil. La page passe donc par le
-  <b>partage</b> du système, qui sait joindre le fichier et propose ton
-  application de courriel. Si ton appareil ne l'offre pas, le fichier est
-  téléchargé et tu le joins toi-même : la page te le dit alors clairement.
-</p>
-</div>
-
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v27</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v28</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -983,6 +952,37 @@ GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
 
 <div id="cfgMsg" style="margin-top:12px;"></div>
 </form>
+</div>
+
+<!-- =====================================================================
+     [v27] LE JOURNAL DE DIAGNOSTIC -- EN BAS DE LA PAGE, ET SANS `dlg-only`
+     NI `trlg-only`. C'est APRES coup qu'on veut l'envoyer, souvent une fois
+     tout debranche : le cacher avec le metier le rendrait introuvable
+     precisement quand il sert.
+     ===================================================================== -->
+<div class="card">
+<h2>Journal de diagnostic</h2>
+<p class="small">
+  Prépare un fichier texte : versions lues, paquets reçus et perdus, tours,
+  canaux CAN vus, les messages d'état et la trace en mètres.
+  Le journal <b>survit à un rechargement</b> de la page.
+</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+  <button type="button" class="btn" id="btnDiag" style="margin-top:0;width:auto;" onclick="diagEnvoyer()">Envoyer le journal</button>
+  <button type="button" class="btn btn2" id="btnDiagRaz" style="margin-top:0;width:auto;" onclick="diagEffacer()">Effacer</button>
+  <span id="diagEtat" class="small" style="opacity:.75;"></span>
+</div>
+<p class="small" style="margin:12px 0 0;opacity:.85;">
+  ⚠ <b>Le fichier contient ta position de départ et ton parcours.</b>
+  Ne l'envoie qu'à quelqu'un à qui tu acceptes de les donner.
+</p>
+<p class="small" style="margin:8px 0 0;opacity:.85;">
+  ⚠ <b>Un courriel ne peut pas joindre un fichier tout seul</b> — le protocole
+  ne le prévoit pas, sur aucun appareil. La page passe donc par le
+  <b>partage</b> du système, qui sait joindre le fichier et propose ton
+  application de courriel. Si ton appareil ne l'offre pas, le fichier est
+  téléchargé et tu le joins toi-même : la page te le dit alors clairement.
+</p>
 </div>
 
 <script>
