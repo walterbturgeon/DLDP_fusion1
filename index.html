@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v15</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v16</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -394,7 +394,20 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter</button>
 <button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Effacer les tours</button>
 <button type="button" class="btn btn3" id="btnSimTour" style="margin-top:0;" onclick="rlSimulerTour()">Simuler un tour</button>
+<button type="button" class="btn btn2" id="btnLive" style="margin-top:0;" onclick="rlLiveBascule()">Live : arrêté</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
+</div>
+
+<!-- ============ MODE LIVE ============ -->
+<!-- ⚠ CE PANNEAU NE SERT PAS AUX TOURS. Il sert a EPROUVER LE LIEN LoRa :
+     portee, debit, pertes. Le module diffuse sa position a 5 Hz au lieu
+     d'attendre un passage de ligne.
+     ⚠ Il reste masque tant qu'aucun paquet live n'est arrive : un panneau
+     de zeros ferait croire a une liaison morte alors que le live est
+     simplement eteint. -->
+<div id="liveBloc" style="margin-top:14px;display:none;">
+  <div class="grid" id="liveGrid"></div>
+  <p class="small" id="liveNote" style="margin:10px 0 0;opacity:.75;"></p>
 </div>
 <div id="relaisBloc" style="margin-top:14px;display:none;">
   <div class="grid" id="relaisGrid"></div>
@@ -2935,6 +2948,7 @@ function rlNotif(ev) {
   if (bytes.length < 2) return;
   if (bytes[0] === 0x01) rlDecodeTour(bytes);
   else if (bytes[0] === 0x02) rlDecodeTrace(bytes);
+  else if (bytes[0] === 0x06) rlDecodeLive(bytes);
 }
 
 // ---- Résumé de tour ----
@@ -3376,6 +3390,125 @@ function rlRendre() {
 //
 // ⚠ ON DEMANDE CONFIRMATION. Les tours d'une seance ne se retrouvent
 // pas : ils ne sont pas archives dans la page.
+// =====================================================================
+// MODE LIVE  --  eprouver le lien LoRa : portee, debit, pertes
+// =====================================================================
+// Le module diffuse sa position a 5 Hz. Ce panneau ne sert PAS aux tours :
+// il sert a voir le lien se degrader quand on s'eloigne.
+//
+// ⚠⚠ LES TROIS MESURES REPOSENT SUR LE NUMERO DE SEQUENCE ET
+// L'HORODATAGE PORTES PAR LE PAQUET. Sans le numero, on verrait des
+// points arriver sans savoir lesquels MANQUENT -- une liaison qui perd la
+// moitie des paquets ressemblerait a une liaison saine mais lente. C'est
+// exactement l'erreur qu'on veut rendre impossible.
+var liveOn = false;
+var liveSeqPrec = null;      // dernier numero recu
+var liveRecus = 0, liveManques = 0;
+var liveT0 = 0, liveOctets = 0;
+var liveArrPrec = 0, liveSrcPrec = 0;
+var liveGigueMax = 0;
+var liveDernier = null;
+
+function rlLiveMaj() {
+  var b = document.getElementById('btnLive');
+  if (b) {
+    b.textContent = liveOn ? 'Live : en marche' : 'Live : arrêté';
+    b.className = liveOn ? 'btn' : 'btn btn2';
+    b.style.marginTop = '0';
+  }
+}
+
+async function rlLiveBascule() {
+  if (!rlCmdChar) { rlEtat('Le relais n’est pas connecté : la commande ne peut pas partir.'); return; }
+  var veut = !liveOn;
+  try {
+    // ⚠ ON ENVOIE L'ETAT VOULU, PAS UNE BASCULE. Sur une liaison qui perd
+    // des paquets, un « inverse » finit par desynchroniser le bouton et le
+    // module. Un ordre qui porte l'etat est idempotent.
+    await rlCmdChar.writeValue(new Uint8Array([0x07, veut ? 1 : 0]));
+    liveOn = veut;
+    if (veut) {
+      liveSeqPrec = null; liveRecus = 0; liveManques = 0;
+      liveT0 = 0; liveOctets = 0; liveGigueMax = 0;
+      liveArrPrec = 0; liveSrcPrec = 0;
+      rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
+    } else {
+      rlEtat('Live arrêté.');
+    }
+    rlLiveMaj();
+  } catch (e) {
+    rlEtat('La commande live n’est pas partie : ' + e.message);
+  }
+}
+
+function rlDecodeLive(b) {
+  if (b.length < 20) return;
+  var dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  var seq   = dv.getUint16(1, true);
+  var srcMs = dv.getUint32(3, true);
+  var lat   = dv.getInt32(7, true)  / 1e7;
+  var lon   = dv.getInt32(11, true) / 1e7;
+  var kmh   = dv.getUint16(15, true) / 100;
+  var sats  = b[17], fix = b[18], valide = b[19];
+  var arr   = performance.now();
+
+  // ---- pertes, par les trous dans la sequence ----
+  if (liveSeqPrec !== null) {
+    var d = (seq - liveSeqPrec) & 0xFFFF;
+    if (d > 1 && d < 1000) liveManques += (d - 1);   // 1000 = repli, pas un trou
+  }
+  liveSeqPrec = seq;
+  liveRecus++;
+
+  // ---- debit ----
+  if (!liveT0) liveT0 = arr;
+  liveOctets += b.length;
+  var secs = Math.max(0.001, (arr - liveT0) / 1000);
+
+  // ---- gigue : l'ecart entre le temps SOURCE et le temps d'ARRIVEE ----
+  // ⚠ Ce n'est PAS la latence absolue : les deux horloges sont
+  // differentes et rien ne les recale. C'est la VARIATION du delai, la
+  // seule chose qu'on puisse mesurer honnetement d'un seul cote.
+  if (liveArrPrec) {
+    var dArr = arr - liveArrPrec;
+    var dSrc = ((srcMs - liveSrcPrec) & 0xFFFFFFFF);
+    var g = Math.abs(dArr - dSrc);
+    if (g < 60000 && g > liveGigueMax) liveGigueMax = g;
+  }
+  liveArrPrec = arr; liveSrcPrec = srcMs;
+
+  liveDernier = { lat: lat, lon: lon, kmh: kmh, sats: sats, fix: fix, valide: valide };
+
+  // ---- affichage ----
+  var bloc = document.getElementById('liveBloc');
+  if (bloc) bloc.style.display = '';
+  var total = liveRecus + liveManques;
+  var perte = total ? (100 * liveManques / total) : 0;
+  var lignes = [
+    ['Position',  valide ? (lat.toFixed(6) + ', ' + lon.toFixed(6)) : 'pas de fix'],
+    ['Vitesse',   uniVit(kmh).toFixed(1) + (uniImp ? ' mph' : ' km/h')],
+    ['Satellites', sats + '  (fix ' + fix + ')'],
+    ['Paquets',   liveRecus + ' reçus, <b>' + liveManques + ' perdus</b>'],
+    ['Perte',     perte.toFixed(1) + ' %'],
+    ['Débit',     Math.round(liveOctets / secs) + ' o/s'],
+    ['Gigue max', Math.round(liveGigueMax) + ' ms']
+  ];
+  var h = '';
+  lignes.forEach(function (r) {
+    h += "<div class='small'>" + r[0] + "</div><div><b>" + r[1] + "</b></div>";
+  });
+  var g2 = document.getElementById('liveGrid');
+  if (g2) g2.innerHTML = h;
+
+  var n = document.getElementById('liveNote');
+  if (n) {
+    n.innerHTML = perte > 20
+      ? "<b style='color:var(--err-ink)'>&#9888; Plus d'un paquet sur cinq se perd — le lien décroche.</b>"
+      : "La gigue est la <b>variation</b> du délai, pas le délai lui-même : "
+        + "les horloges du module et de la tablette ne sont pas recalées.";
+  }
+}
+
 async function rlResetTours() {
   if (!rlLaps.length && !rlCmdChar) {
     rlEtat('Rien à effacer, et le relais n’est pas connecté.');
