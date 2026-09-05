@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v32</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v33</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3361,7 +3361,28 @@ async function diagTestSat() {
   // 5. Une image AVEC crossOrigin -- l'ancien chemin, pour comparer.
   dire('image avec crossOrigin : ' + await diagEssaiImage(url, true));
 
-  // 6. Un fetch direct : lui, rend un code HTTP et un type.
+  // 6. ⚠⚠ LE CHEMIN QUI ECHOUE : celui du LIVE. Les onglets de tour
+  //    recoivent leur image, le live non. Ce sont deux calculs de cadrage
+  //    differents : seule l'URL reellement demandee par le live dit en quoi.
+  dire('');
+  dire('--- LE CHEMIN DU LIVE ---');
+  dire('dernier sort : ' + liveSatDernierSort);
+  if (!liveSatDerniereUrl) {
+    dire('Le live n’a jamais demandé d’image. Coche « Fond satellite »');
+    dire('pendant que le live tourne, puis relance ce test.');
+  } else {
+    dire('URL du live : ' + liveSatDerniereUrl);
+    var bb = (liveSatDerniereUrl.match(/bbox=([^&]*)/) || [])[1];
+    var tl = (liveSatDerniereUrl.match(/size=([^&]*)/) || [])[1];
+    dire('  bbox : ' + bb);
+    dire('  taille : ' + tl);
+    // On rejoue EXACTEMENT cette URL : si elle echoue ici aussi, le defaut
+    // est dans le cadrage, pas dans le reseau.
+    dire('  rejeu de cette URL : ' + await diagEssaiImage(liveSatDerniereUrl, false));
+  }
+  dire('');
+
+  // 7. Un fetch direct : lui, rend un code HTTP et un type.
   try {
     var r = await fetch(url, { mode: 'no-cors' });
     dire('fetch no-cors : type ' + r.type + ', statut ' + r.status);
@@ -3817,7 +3838,17 @@ var liveSatCle     = '';
 var liveSatCharge  = false;  // une requete est-elle en vol
 var liveSatT       = 0;      // instant du dernier chargement
 var liveSatEchecs  = 0;
-var LIVE_SAT_DELAI = 6000;   // ms entre deux chargements, au minimum
+// [v33] ⚠ ON RETIENT LA DERNIERE DEMANDE DU LIVE ET SON SORT. Le chemin des
+// tours recoit son image, celui du live echoue : sans garder l'URL exacte
+// que le live a demandee, on compare deux chemins sans jamais voir en quoi
+// ils different.
+var liveSatDerniereUrl = '', liveSatDernierSort = '(aucune demande)';
+// ⚠ 30 s, PAS 6. Le live redemande une image a chaque fois que la trace
+// sort du cadre ; a 6 s d'intervalle cela fait dix requetes par minute vers
+// un serveur d'images public, qui finit par refuser -- et le refus
+// ressemble a une panne de reseau. Le cadre prend desormais de l'avance sur
+// la voiture (v30), il n'a plus besoin d'etre redemande souvent.
+var LIVE_SAT_DELAI = 30000;  // ms entre deux chargements, au minimum
 var LIVE_SAT_MARGE = 0.72;   // la trace doit rester sous 72 % du demi-cadre
 
 // ⚠ ETENDUE MINIMALE DE LA CARTE LIVE : 50 m de cote, demande de
@@ -3920,6 +3951,9 @@ function rlLiveSatMaj(force) {
   }
 
   liveSatCharge = true; liveSatT = now;
+  liveSatDerniereUrl = url;
+  liveSatDernierSort = 'en cours...';
+  var tDemande = Date.now();
   rlSatEtat('Chargement du fond...');
   var im = new Image();
   // ⚠ PAS DE `crossOrigin`. Il n'est utile que pour LIRE les pixels du
@@ -3931,6 +3965,8 @@ function rlLiveSatMaj(force) {
   im.onload = function () {
     liveSatCharge = false; liveSatEchecs = 0;
     liveSatImg = im; liveSatCle = cle; liveSatCadre = cadre;
+    liveSatDernierSort = 'RECUE en ' + (Date.now() - tDemande) + ' ms, '
+                       + im.naturalWidth + 'x' + im.naturalHeight + ' px';
     rlSatEtat('');
     if (liveVue) rlDessinerLiveCarte();
   };
@@ -3939,6 +3975,7 @@ function rlLiveSatMaj(force) {
   im.onerror = function () {
     liveSatCharge = false; liveSatEchecs++;
     liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
+    liveSatDernierSort = 'ECHEC apres ' + (Date.now() - tDemande) + ' ms (essai n°' + liveSatEchecs + ')';
     // ⚠ ON N'INVENTE PAS LA CAUSE. « pas de reseau ? » envoyait chercher un
     // defaut de connexion alors que la tablette etait bien connectee : le
     // navigateur ne dit PAS pourquoi une image echoue. On nomme donc les
