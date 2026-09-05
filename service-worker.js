@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v16';  // v16 : mode LIVE, position et vitesse par LoRa
+const CACHE = PREFIX + 'v17';  // v17 : ligne virtuelle et point live sur la carte
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais

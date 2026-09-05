@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v16</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v17</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3408,6 +3408,70 @@ var liveT0 = 0, liveOctets = 0;
 var liveArrPrec = 0, liveSrcPrec = 0;
 var liveGigueMax = 0;
 var liveDernier = null;
+var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
+
+// =====================================================================
+// DESSINER LE LIVE SUR LA CARTE DE VITESSE
+// =====================================================================
+// Deux choses par-dessus la trace deja tracee :
+//   un TRAIT   -- la ligne virtuelle, la ou le tour se ferme
+//   un POINT   -- ou se trouve le DLdisplay a la reception du paquet
+//
+// ⚠⚠ ON REDESSINE LA TRACE D'ABORD. Poser le point sur le dessin
+// precedent sans l'effacer laisserait une trainee de points : au bout
+// d'une minute, la carte serait couverte et on ne saurait plus lequel est
+// le bon. Un seul point, celui de maintenant.
+//
+// ⚠ RIEN N'EST DESSINE SANS L'ORIGINE DU TOUR. La carte est en metres
+// depuis cette origine ; sans elle, on ne peut pas savoir OU poser le
+// point. Mieux vaut ne rien montrer qu'un point pose au hasard.
+function rlDessinerLive() {
+  if (!rlProj || !rlLapVu) return;
+  var lap = rlLapVu;
+  if (lap.oLat == null || lap.oLon == null) return;
+  if (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4) return;
+
+  var c = document.getElementById('speedMap');
+  if (!c || c.style.display === 'none') return;
+  var g = c.getContext('2d');
+
+  rlDessinerTrace(lap.num);          // on repart d'une carte propre
+
+  // ---- le trait de la ligne virtuelle ----
+  if (liveLigne && liveLigne.calibree) {
+    // ⚠ LA LIGNE EST PERPENDICULAIRE AU CAP. Le module garde le vecteur de
+    // DIRECTION du passage ; la ligne qu'on franchit lui est a angle droit.
+    // Tracer le cap lui-meme dessinerait la trajectoire, pas la ligne.
+    var L = 25;                       // 25 m de part et d'autre
+    var px = -liveLigne.hy, py = liveLigne.hx;
+    var x1 = rlProj.X(liveLigne.x - px * L), y1 = rlProj.Y(liveLigne.y - py * L);
+    var x2 = rlProj.X(liveLigne.x + px * L), y2 = rlProj.Y(liveLigne.y + py * L);
+    g.save();
+    // ⚠⚠ UN HALO CLAIR SOUS UN TRAIT SOMBRE. Mon premier essai tracait la
+    // ligne en BLANC : elle etait parfaitement invisible sur le fond blanc
+    // de la carte, et rien ne le disait -- le code s'executait, le trait
+    // etait bien la, on ne le voyait pas. Le halo la rend lisible aussi
+    // sur le fond satellite, qui est sombre.
+    g.lineCap = 'round';
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 7; g.setLineDash([]);
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+    g.strokeStyle = '#0b63c6'; g.lineWidth = 3; g.setLineDash([9, 6]);
+    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+    g.restore();
+  }
+
+  // ---- le point du module, maintenant ----
+  if (liveDernier && liveDernier.valide) {
+    var R = 6371000, rad = Math.PI / 180;
+    var dy = (liveDernier.lat - lap.oLat) * rad * R;
+    var dx = (liveDernier.lon - lap.oLon) * rad * R * Math.cos(lap.oLat * rad);
+    g.save();
+    g.fillStyle = '#ffffff'; g.strokeStyle = '#111111'; g.lineWidth = 2;
+    g.beginPath(); g.arc(rlProj.X(dx), rlProj.Y(dy), 7, 0, Math.PI * 2);
+    g.fill(); g.stroke();
+    g.restore();
+  }
+}
 
 function rlLiveMaj() {
   var b = document.getElementById('btnLive');
@@ -3478,6 +3542,23 @@ function rlDecodeLive(b) {
   liveArrPrec = arr; liveSrcPrec = srcMs;
 
   liveDernier = { lat: lat, lon: lon, kmh: kmh, sats: sats, fix: fix, valide: valide };
+
+  // ---- La ligne virtuelle, si le module l'envoie (paquet de 26 octets) ----
+  // ⚠ ON TESTE LA LONGUEUR, PAS LA VERSION. Un paquet de 20 octets vient
+  // d'un firmware anterieur : il doit continuer d'etre lu sans erreur, et
+  // la ligne reste simplement inconnue. Se fier a un numero de version
+  // ferait rejeter un module parfaitement valide.
+  if (b.length >= 26) {
+    var hy7 = (b[25] & 0x40) ? ((b[25] & 0x7F) - 128) : (b[25] & 0x7F);
+    liveLigne = {
+      calibree: (b[25] & 0x80) !== 0,
+      x: dv.getInt16(20, true),
+      y: dv.getInt16(22, true),
+      hx: (b[24] > 127 ? b[24] - 256 : b[24]) / 127,
+      hy: hy7 / 63
+    };
+  }
+  rlDessinerLive();
 
   // ---- affichage ----
   var bloc = document.getElementById('liveBloc');
