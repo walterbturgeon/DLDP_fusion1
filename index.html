@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v35</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v36</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3900,6 +3900,61 @@ var LIVE_SAT_MARGE = 0.72;   // la trace doit rester sous 72 % du demi-cadre
 // automatique ET pour le cadre du fond satellite -- deux planchers
 // differents decaleraient l'image et le trace.
 var LIVE_ETENDUE_MIN = 50;   // metres, cote complet
+
+// =====================================================================
+// [v36] LA CARTE SUIT LES CHANGEMENTS DE TAILLE ET D'ORIENTATION
+// =====================================================================
+// ⚠⚠ RIEN NE REDESSINAIT LA CARTE QUAND LA TABLETTE TOURNAIT. Le canvas
+// est large de 100 %, mais sa hauteur et son tampon de pixels sont poses
+// EN DUR au moment du dessin. Apres une rotation, la largeur change et le
+// dessin d'avant ne correspond plus : la carte disparaissait, et il fallait
+// recharger la page pour la revoir.
+// Le dessin du live ne repart qu'a l'arrivee d'un paquet -- si le live est
+// arrete, ou entre deux paquets, plus rien ne le declenche.
+//
+// ⚠ Le fond satellite doit repartir AUSSI : son cadre retient la taille en
+// pixels de l'image, et une image de l'ancienne largeur ne se superpose
+// plus a la trace. On force donc un nouveau chargement, sans attendre le
+// delai de 30 s.
+var rlTailleMinuterie = null;
+function rlTailleChangee() {
+  // ⚠ ANTI-REBOND. `resize` part en rafale pendant une rotation ; sans
+  // attente, on redessinerait vingt fois et on demanderait vingt images.
+  if (rlTailleMinuterie) clearTimeout(rlTailleMinuterie);
+  rlTailleMinuterie = setTimeout(function () {
+    rlTailleMinuterie = null;
+    if (liveVue) {
+      liveSatT = 0; liveSatReduit = false; liveSatEchecs = 0;
+      rlDessinerLiveCarte();
+      rlLiveSatMaj(true);
+    } else if (rlLapVu) {
+      rlSatImg = null; rlSatCle = '';
+      rlDessinerTrace(rlLapVu.num);
+      rlSatCharger();
+    }
+  }, 300);
+}
+window.addEventListener('resize', rlTailleChangee);
+window.addEventListener('orientationchange', rlTailleChangee);
+
+// ⚠⚠ ET ON OBSERVE LE CANVAS LUI-MEME. `resize` n'est pas toujours emis :
+// une barre d'adresse qui se replie, un clavier qui s'ouvre, un panneau qui
+// s'elargit changent la largeur du canvas SANS que la fenetre change. Un
+// ResizeObserver voit le changement d'ou qu'il vienne, et c'est la largeur
+// du canvas -- pas celle de la fenetre -- qui decide du dessin.
+try {
+  if (window.ResizeObserver) {
+    var rlLargeurVue = 0;
+    new ResizeObserver(function (entrees) {
+      var l = Math.round(entrees[0].contentRect.width);
+      // ⚠ On ignore les variations d'un pixel : un arrondi de mise en page
+      // relancerait le dessin et une requete d'image pour rien.
+      if (!l || Math.abs(l - rlLargeurVue) < 4) return;
+      rlLargeurVue = l;
+      rlTailleChangee();
+    }).observe(document.getElementById('speedMap'));
+  }
+} catch (e) { console.warn('[carte] ResizeObserver indisponible :', e.message); }
 
 // [v32] Repartir a zero apres les trois echecs, sans decocher la case.
 function rlSatReessayer() {
