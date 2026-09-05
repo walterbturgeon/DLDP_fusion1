@@ -214,7 +214,11 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
   opacity:.5;padding:10px 12px 10px 2px;line-height:1;font-size:19px;
   min-width:34px;text-align:center;}
 .chPoignee:active{cursor:grabbing;opacity:1;}
-tr.chGlisse{opacity:.55;background:var(--line);outline:2px solid var(--acc);}
+/* ⚠ La ligne tenue passe AU-DESSUS des autres et suit le doigt. Sans
+   `position:relative`, le z-index ne mordrait pas sur un <tr> et la ligne
+   glisserait SOUS ses voisines : on croirait l'avoir perdue. */
+tr.chGlisse{background:var(--card);outline:2px solid var(--acc);
+  position:relative;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,.22);}
 
 /* ⚠⚠ PENDANT LE GLISSEMENT, PLUS AUCUN GESTE N'APPARTIENT AU NAVIGATEUR.
    Le tableau vit dans un conteneur `overflow-x:auto` : un doigt qui devie
@@ -291,7 +295,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v25</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v26</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -2920,8 +2924,18 @@ chOrdreCharger();
 // aurait l'air cassee sur l'appareil meme dont on se sert en piste.
 var chDragTr = null, chDragBody = null, chDragPid = null;
 var chDragY = null, chDragYDepart = 0, chDragParti = false;
+// ⚠ FILET DE SECOURS PAR LE TEMPS. `lostpointercapture` ne peut plus servir
+// de filet : il arrive normalement a chaque echange. Si plus AUCUN
+// evenement n'arrive pendant 6 s, le doigt est parti sans que le
+// relachement nous parvienne -- on termine le geste, sinon les tableaux
+// resteraient figes pour de bon, sans un mot a l'ecran.
+var chDragMinuterie = null;
+function chDragArmer() {
+  if (chDragMinuterie) clearTimeout(chDragMinuterie);
+  chDragMinuterie = setTimeout(function () { chPoigneeUp({}); }, 6000);
+}
 var CH_DRAG_DEPART = 8;      // px avant de bouger quoi que ce soit
-var CH_DRAG_SEUIL  = 0.55;   // > 0,5 : la course morte qui evite l'oscillation
+var CH_DRAG_SEUIL  = 0.52;   // > 0,5 : la course morte qui evite l'oscillation
 
 function chPoigneeDown(ev) {
   var h = ev.target.closest ? ev.target.closest('.chPoignee') : null;
@@ -2941,11 +2955,13 @@ function chPoigneeDown(ev) {
   // et on chercherait la cause ailleurs.
   try { h.setPointerCapture(ev.pointerId); }
   catch (e) { console.warn('[ordre] capture du pointeur refusee :', e.message); }
+  chDragArmer();
 }
 
 function chPoigneeMove(ev) {
   if (!chDragTr || ev.pointerId !== chDragPid) return;
   ev.preventDefault();
+  chDragArmer();
 
   // ⚠ LISSAGE LEGER DE LA POSITION DU DOIGT. Un contact tactile tremble de
   // quelques pixels a chaque rapport ; brut, il faisait sauter la ligne.
@@ -2970,6 +2986,9 @@ function chPoigneeMove(ev) {
   // impossible de la monter du bas vers le haut en un seul geste, elle
   // restait derriere le doigt. La boucle la rattrape a chaque rapport.
   // ⚠ La borne garantit la sortie meme si deux conditions se contredisaient.
+  // ⚠ LA LIGNE TENUE EST TRANSLATEE. On l'efface avant de mesurer, sinon
+  // sa propre translation fausserait les seuils.
+  chDragTr.style.transform = '';
   var pas = 0, max = chDragBody.children.length + 2;
   while (pas++ < max) {
     var prec = chDragTr.previousElementSibling;
@@ -2990,6 +3009,14 @@ function chPoigneeMove(ev) {
     }
     break;
   }
+
+  // ⚠⚠ LA LIGNE SUIT LE DOIGT, ENTRE DEUX ECHANGES. Sans cela elle restait
+  // clouee a sa place et sautait d'un cran d'un coup : c'est ce qui donnait
+  // les a-coups. Elle glisse maintenant sous le doigt, et l'echange n'est
+  // plus qu'un rangement du flux dessous.
+  var r0 = chDragTr.getBoundingClientRect();
+  chDragTr.style.transform = 'translateY(' + (y - (r0.top + r0.height / 2)) + 'px)';
+
   chDragDefiler(y);
 }
 
@@ -3018,7 +3045,9 @@ function chDragDefiler(y) {
 
 function chPoigneeUp(ev) {
   if (!chDragTr) return;
+  if (chDragMinuterie) { clearTimeout(chDragMinuterie); chDragMinuterie = null; }
   document.body.classList.remove('chDragActif');
+  chDragTr.style.transform = '';
   chDragTr.classList.remove('chGlisse');
   var lignes = chDragBody.children, ordre = [];
   for (var i = 0; i < lignes.length; i++) {
@@ -3061,7 +3090,17 @@ document.addEventListener('pointercancel', chPoigneeUp);
 // decide d'imposer, une fenetre qui perd le focus -- ni `pointerup` ni
 // `pointercancel` n'arrivent toujours. Sans ce filet, `chDragTr` resterait
 // pose et le tableau se figerait pour de bon, sans un mot a l'ecran.
-document.addEventListener('lostpointercapture', chPoigneeUp);
+// ⚠⚠ `lostpointercapture` NE TERMINE PLUS LE GESTE. Il l'a tue pendant
+// trois versions : `insertBefore` deplace le <tr>, donc la poignee qui
+// DETIENT la capture, et le navigateur libere alors la capture. Le geste
+// s'arretait juste apres le premier echange -- une seule ligne franchie, et
+// il fallait recommencer. On tente de reprendre la capture ; meme sans
+// elle, les `pointermove` remontent jusqu'au document et le geste survit.
+document.addEventListener('lostpointercapture', function (ev) {
+  if (!chDragTr) return;
+  var h = chDragTr.querySelector('.chPoignee');
+  if (h) { try { h.setPointerCapture(ev.pointerId); } catch (e) {} }
+});
 // ⚠⚠ LE FILET DECISIF. Certains navigateurs figent leur decision de
 // defilement au tout premier `touchstart` et ignorent un `touch-action`
 // pose apres coup. Ce `preventDefault` sur `touchmove`, lui, agit toujours :
