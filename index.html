@@ -278,7 +278,7 @@ tr.chGlisse{opacity:.45;background:var(--line);}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v22</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v23</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -2944,23 +2944,30 @@ function chPoigneeMove(ev) {
   // d'avant en arriere sans que le doigt bouge. Le seuil est donc pousse a
   // 55 % de la hauteur d'une ligne, ce qui laisse 10 % de course morte
   // entre l'aller et le retour.
-  // ⚠ UN SEUL ECHANGE PAR EVENEMENT. Les rapports arrivent assez souvent
-  // pour suivre un geste rapide, et un seul pas a la fois reste lisible.
-  var prec = chDragTr.previousElementSibling;
-  if (prec) {
-    var rp = prec.getBoundingClientRect();
-    if (y < rp.bottom - rp.height * CH_DRAG_SEUIL) {
-      chDragBody.insertBefore(chDragTr, prec);
-      return chDragDefiler(y);
+  // ⚠⚠ ON ECHANGE TANT QU'IL LE FAUT, PAS UNE FOIS PAR EVENEMENT. Avec un
+  // seul pas par rapport, la ligne ne franchissait qu'une case a la fois :
+  // impossible de la monter du bas vers le haut en un seul geste, elle
+  // restait derriere le doigt. La boucle la rattrape a chaque rapport.
+  // ⚠ La borne garantit la sortie meme si deux conditions se contredisaient.
+  var pas = 0, max = chDragBody.children.length + 2;
+  while (pas++ < max) {
+    var prec = chDragTr.previousElementSibling;
+    if (prec) {
+      var rp = prec.getBoundingClientRect();
+      if (y < rp.bottom - rp.height * CH_DRAG_SEUIL) {
+        chDragBody.insertBefore(chDragTr, prec);
+        continue;
+      }
     }
-  }
-  var suiv = chDragTr.nextElementSibling;
-  if (suiv) {
-    var rs = suiv.getBoundingClientRect();
-    if (y > rs.top + rs.height * CH_DRAG_SEUIL) {
-      chDragBody.insertBefore(chDragTr, suiv.nextSibling);
-      return chDragDefiler(y);
+    var suiv = chDragTr.nextElementSibling;
+    if (suiv) {
+      var rs = suiv.getBoundingClientRect();
+      if (y > rs.top + rs.height * CH_DRAG_SEUIL) {
+        chDragBody.insertBefore(chDragTr, suiv.nextSibling);
+        continue;
+      }
     }
+    break;
   }
   chDragDefiler(y);
 }
@@ -2975,10 +2982,17 @@ function chDragDefiler(y) {
   // doigt et s'echangeaient en rafale, sans que le doigt bouge. C'est ce
   // qui rendait le geste erratique.
   if (y < 0 || y > H) return;
-  // Bande etroite et pas court : de quoi atteindre le haut du tableau sans
-  // que la liste s'emballe des qu'on approche d'un bord.
-  if (y < 48)          window.scrollBy(0, -7);
-  else if (y > H - 48) window.scrollBy(0, 7);
+  // ⚠ VITESSE PROPORTIONNELLE A LA PROFONDEUR DANS LA BANDE. A vitesse
+  // fixe il fallait choisir entre un defilement fin, trop lent pour
+  // remonter 38 lignes en un geste, et un defilement rapide qui s'emballe
+  // des qu'on frole le bord. Ici le bord de la bande donne 4 px et le bord
+  // de l'ecran 21 px : on dose avec le doigt.
+  var d = 0;
+  if (y < 48)          d = -(48 - y);
+  else if (y > H - 48) d = y - (H - 48);
+  if (!d) return;
+  var v = 4 + Math.abs(d) * 0.35;
+  window.scrollBy(0, d < 0 ? -v : v);
 }
 
 function chPoigneeUp(ev) {
