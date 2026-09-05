@@ -217,8 +217,14 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
 /* ⚠ La ligne tenue passe AU-DESSUS des autres et suit le doigt. Sans
    `position:relative`, le z-index ne mordrait pas sur un <tr> et la ligne
    glisserait SOUS ses voisines : on croirait l'avoir perdue. */
-tr.chGlisse{background:var(--card);outline:2px solid var(--acc);
-  position:relative;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,.22);}
+/* ⚠ LA SURBRILLANCE DIT CE QU'ON TIENT. Sans elle on ne savait pas si la
+   ligne etait prise, et on relachait en croyant avoir rate. Elle est posee
+   des l'appui, AVANT le moindre mouvement. */
+tr.chGlisse{outline:2px solid var(--accent);outline-offset:-2px;
+  position:relative;z-index:5;box-shadow:0 6px 16px rgba(0,0,0,.30);}
+tr.chGlisse td{background:var(--ok-bg) !important;color:var(--ok-ink) !important;
+  font-weight:600;}
+tr.chGlisse .chPoignee{opacity:1;color:var(--accent) !important;}
 
 /* ⚠⚠ PENDANT LE GLISSEMENT, PLUS AUCUN GESTE N'APPARTIENT AU NAVIGATEUR.
    Le tableau vit dans un conteneur `overflow-x:auto` : un doigt qui devie
@@ -294,8 +300,39 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ⚠ NON EPROUVE SUR UN VRAI VEHICULE au moment ou ces lignes sont
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
+<!-- =====================================================================
+     [v27] LE JOURNAL DE DIAGNOSTIC -- EN BAS DE LA PAGE, ET SANS `dlg-only`
+     NI `trlg-only`. C'est APRES coup qu'on veut l'envoyer, souvent une fois
+     tout debranche : le cacher avec le metier le rendrait introuvable
+     precisement quand il sert.
+     ===================================================================== -->
+<div class="card">
+<h2>Journal de diagnostic</h2>
+<p class="small">
+  Prépare un fichier texte : versions lues, paquets reçus et perdus, tours,
+  canaux CAN vus, les messages d'état et la trace en mètres.
+  Le journal <b>survit à un rechargement</b> de la page.
+</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+  <button type="button" class="btn" id="btnDiag" style="margin-top:0;width:auto;" onclick="diagEnvoyer()">Envoyer le journal</button>
+  <button type="button" class="btn btn2" id="btnDiagRaz" style="margin-top:0;width:auto;" onclick="diagEffacer()">Effacer</button>
+  <span id="diagEtat" class="small" style="opacity:.75;"></span>
+</div>
+<p class="small" style="margin:12px 0 0;opacity:.85;">
+  ⚠ <b>Le fichier contient ta position de départ et ton parcours.</b>
+  Ne l'envoie qu'à quelqu'un à qui tu acceptes de les donner.
+</p>
+<p class="small" style="margin:8px 0 0;opacity:.85;">
+  ⚠ <b>Un courriel ne peut pas joindre un fichier tout seul</b> — le protocole
+  ne le prévoit pas, sur aucun appareil. La page passe donc par le
+  <b>partage</b> du système, qui sait joindre le fichier et propose ton
+  application de courriel. Si ton appareil ne l'offre pas, le fichier est
+  téléchargé et tu le joins toi-même : la page te le dit alors clairement.
+</p>
+</div>
+
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v26</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v27</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3146,6 +3183,182 @@ var rlLapVu = null;
 function rlEtat(txt) {
   var e = document.getElementById('relaisStatus');
   if (e) e.textContent = txt;
+  diagNoter(txt);   // [v27] tout message d'etat entre au journal
+}
+
+// =====================================================================
+// [v27] LE JOURNAL DE DIAGNOSTIC
+// =====================================================================
+// Il retient ce qui s'est passe pendant la connexion, pour qu'on puisse
+// l'envoyer et le lire APRES coup. Sans lui, un defaut vu en piste se
+// raconte de memoire, et une seance se perd a redemander des chiffres.
+//
+// ⚠ IL SURVIT AU RECHARGEMENT. Un plantage ou une page rechargee effacerait
+// justement ce qu'on cherche a comprendre. Le journal est ecrit dans le
+// navigateur a chaque ligne, et se relit au demarrage suivant.
+//
+// ⚠ IL EST BORNE A 400 LIGNES. Sans borne, une seance de deux heures
+// remplirait le stockage du navigateur et l'ecriture echouerait -- en
+// silence, au pire moment.
+var DIAG_CLE = 'dlgDiagJournal', DIAG_MAX = 400;
+var diagLignes = [];
+var diagT0 = Date.now();
+
+try {
+  var s0 = localStorage.getItem(DIAG_CLE);
+  if (s0) { var a0 = JSON.parse(s0); if (Array.isArray(a0)) diagLignes = a0.slice(-DIAG_MAX); }
+} catch (e) { diagLignes = []; }
+
+function diagHeure(d) {
+  function n2(v) { return (v < 10 ? '0' : '') + v; }
+  return n2(d.getHours()) + ':' + n2(d.getMinutes()) + ':' + n2(d.getSeconds());
+}
+
+function diagNoter(txt) {
+  if (!txt) return;
+  var d = new Date();
+  var ligne = diagHeure(d) + ' ' + String(txt).replace(/\s+/g, ' ').slice(0, 300);
+  // On ne repete pas une ligne identique a la precedente : la reconnexion
+  // ecrit le meme message toutes les deux secondes et noierait le reste.
+  var der = diagLignes[diagLignes.length - 1];
+  if (der && der.slice(9) === ligne.slice(9)) return;
+  diagLignes.push(ligne);
+  if (diagLignes.length > DIAG_MAX) diagLignes = diagLignes.slice(-DIAG_MAX);
+  try { localStorage.setItem(DIAG_CLE, JSON.stringify(diagLignes)); } catch (e) {}
+}
+
+// Ecrit a cote du bouton, EN BAS de la page. L'etat du relais vit en haut :
+// s'en servir ici afficherait la reponse hors de l'ecran, et le bouton
+// paraitrait sans effet.
+function diagDire(txt) {
+  var e = document.getElementById('diagEtat');
+  if (e) e.textContent = txt;
+  diagNoter(txt);
+}
+
+function diagEffacer() {
+  if (!confirm('Effacer le journal de diagnostic ?\n\n'
+             + diagLignes.length + ' ligne(s) seront perdues. Les tours et la '
+             + 'trace ne sont pas touches.')) return;
+  diagLignes = [];
+  try { localStorage.removeItem(DIAG_CLE); } catch (e) {}
+  diagDire('Journal de diagnostic efface.');
+}
+
+// Construit le fichier a envoyer : le journal, puis l'etat mesure.
+function diagTexte() {
+  var L = [];
+  var d = new Date();
+  L.push('DRAGLOG / TRACKLOGICS -- journal de diagnostic');
+  L.push('Ecrit le ' + d.toLocaleString());
+  var epv = document.getElementById('pageVer');
+  L.push('Page : ' + (epv ? epv.textContent.trim() : '?'));
+  L.push('Navigateur : ' + navigator.userAgent);
+  L.push('Ecran : ' + window.innerWidth + 'x' + window.innerHeight
+       + '  orientation ' + (window.matchMedia('(orientation:portrait)').matches ? 'portrait' : 'paysage'));
+  L.push('');
+  L.push('--- VERSIONS LUES SUR LES APPAREILS ---');
+  var ev = document.getElementById('fwVer'), er = document.getElementById('rlVer');
+  // ⚠ Ces elements portent DEJA leur etiquette (« voiture : ... ») : la
+  // redoubler donnerait « voiture : voiture : non connectee ».
+  L.push(ev ? ev.textContent.trim() : 'voiture : ?');
+  L.push(er ? er.textContent.trim() : 'relais : ?');
+  L.push('');
+  L.push('--- LIEN LIVE ---');
+  var total = liveRecus + liveManques;
+  L.push('paquets recus   : ' + liveRecus);
+  L.push('paquets perdus  : ' + liveManques
+       + (total ? '  (' + (100 * liveManques / total).toFixed(1) + ' %)' : ''));
+  L.push('gigue max       : ' + Math.round(liveGigueMax) + ' ms');
+  L.push('points de trace : ' + liveTrace.length);
+  var trous = liveTrace.filter(function (p) { return p.saut; }).length;
+  L.push('coupures du lien: ' + trous);
+  L.push('');
+  L.push('--- TOURS RECUS ---');
+  if (!rlLaps.length) L.push('(aucun)');
+  else rlLaps.forEach(function (l) {
+    L.push('#' + l.num + '  ' + (l.dureeMs / 1000).toFixed(3) + ' s  source ' + l.source
+         + (l.dMax != null ? '  distance max ' + l.dMax + ' m' : ''));
+  });
+  L.push('');
+  L.push('--- CANAUX CAN VUS EN DIRECT ---');
+  L.push('⚠ min et max des ECHANTILLONS RECUS, pas du tour.');
+  var vus = 0;
+  for (var q = 0; q < chOrdre.length; q++) {
+    var i = chOrdre[q], c = liveCan[i];
+    if (!c) continue;
+    vus++;
+    L.push(CHANNELS[i].name + ' = ' + c.der + '  min ' + c.min + '  max ' + c.max
+         + '  ech ' + c.n + '  ' + CHANNELS[i].unit);
+  }
+  if (!vus) L.push('(aucun)');
+  L.push('');
+  L.push('--- JOURNAL (' + diagLignes.length + ' lignes) ---');
+  L = L.concat(diagLignes);
+  L.push('');
+  L.push('--- TRACE LIVE (metres depuis le premier point, km/h) ---');
+  if (liveOrigine) L.push('origine : ' + liveOrigine.lat.toFixed(6) + ', ' + liveOrigine.lon.toFixed(6));
+  L.push('dx;dy;kmh;saut');
+  liveTrace.forEach(function (p) {
+    L.push(p.dx.toFixed(1) + ';' + p.dy.toFixed(1) + ';' + p.kmh.toFixed(1) + ';' + (p.saut ? 1 : 0));
+  });
+  return L.join('\n');
+}
+
+function diagNomFichier() {
+  var d = new Date();
+  function n2(v) { return (v < 10 ? '0' : '') + v; }
+  return 'draglog_diag_' + d.getFullYear() + n2(d.getMonth() + 1) + n2(d.getDate())
+       + '_' + n2(d.getHours()) + n2(d.getMinutes()) + '.txt';
+}
+
+// ⚠⚠ `mailto:` NE PEUT PAS JOINDRE DE FICHIER. C'est le protocole qui ne le
+// prevoit pas -- aucun navigateur, aucune plateforme. Promettre une piece
+// jointe par `mailto:` donnerait un courriel vide et personne ne saurait
+// pourquoi. On passe donc par le PARTAGE du systeme, qui sait joindre un
+// fichier et propose l'application de courriel. Quand il manque, on
+// telecharge le fichier et on ouvre le courriel a cote : la piece jointe est
+// alors posee a la main, et la page le DIT.
+async function diagEnvoyer() {
+  var txt = diagTexte();
+  var nom = diagNomFichier();
+  var fichier = null;
+  try { fichier = new File([txt], nom, { type: 'text/plain' }); } catch (e) {}
+
+  if (fichier && navigator.canShare && navigator.canShare({ files: [fichier] })) {
+    try {
+      await navigator.share({
+        files: [fichier],
+        title: 'DRAGLOG — journal de diagnostic',
+        text: 'Journal de la dernière connexion. Le fichier est joint.'
+      });
+      diagDire('Journal partagé. Choisis ton application de courriel dans la liste.');
+      return;
+    } catch (e) {
+      // Annuler le partage n'est pas une panne : on le dit sans alarmer.
+      if (e && e.name === 'AbortError') { diagDire('Envoi annulé.'); return; }
+      diagDire('Le partage a échoué : ' + (e && e.message ? e.message : e) + ' — le fichier va être téléchargé.');
+    }
+  }
+
+  // Repli : on telecharge, puis on ouvre le courriel.
+  try {
+    var url = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+    var a = document.createElement('a');
+    a.href = url; a.download = nom;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 20000);
+  } catch (e) {
+    diagDire('Le fichier n’a pas pu être créé : ' + e.message);
+    return;
+  }
+  var corps = 'Le journal est dans le fichier ' + nom + ', telecharge a l instant.\n'
+            + 'Joins-le a ce courriel : ce protocole ne peut pas le joindre tout seul.\n\n'
+            + 'Resume : ' + liveRecus + ' paquets recus, ' + liveManques + ' perdus, '
+            + rlLaps.length + ' tour(s).\n';
+  window.location.href = 'mailto:?subject=' + encodeURIComponent('DRAGLOG - journal de diagnostic ' + nom)
+                       + '&body=' + encodeURIComponent(corps);
+  diagDire('Fichier « ' + nom + ' » téléchargé. ⚠ Joins-le toi-même au courriel : mailto ne sait pas le faire.');
 }
 
 async function relaisConnecter() {
