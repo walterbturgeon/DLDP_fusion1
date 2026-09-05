@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v30';  // v30 : le cadre du fond satellite prend de l avance sur la voiture
+const CACHE = PREFIX + 'v31';  // v31 : le service worker laisse passer Esri, la carte ne clignote plus
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
@@ -53,6 +53,19 @@ self.addEventListener('activate', (ev) => {
 // perime indefiniment sur Android (Chrome), pendant que Bluefy/iOS, qui ne
 // persiste pas le service worker pareil, rechargeait la page fraiche.
 self.addEventListener('fetch', (ev) => {
+  // ⚠⚠ ON NE TOUCHE PAS AUX REQUETES D'UNE AUTRE ORIGINE. Relayer une
+  // requete CORS a travers le service worker lui fait perdre son caractere
+  // CORS : le fond satellite d'Esri, demande en `crossOrigin`, echouait
+  // alors avec « fond satellite indisponible » sur une tablette pourtant
+  // bien connectee. Vu le 5 septembre 2026, apparu quand le service worker
+  // s'est reinstalle a la v28.
+  // Ce cache ne sert QU'AUX fichiers de la page, jamais aux images
+  // distantes : les laisser passer telles quelles est aussi plus juste.
+  if (new URL(ev.request.url).origin !== self.location.origin) return;
+  // ⚠ Les requetes autres que GET ne se mettent pas en cache : `cache.put`
+  // les refuse, et un POST relaye ici echouerait pour rien.
+  if (ev.request.method !== 'GET') return;
+
   ev.respondWith(
     fetch(ev.request)
       .then((resp) => {
@@ -60,6 +73,9 @@ self.addEventListener('fetch', (ev) => {
         caches.open(CACHE).then((c) => c.put(ev.request, copy)).catch(() => {});
         return resp;
       })
-      .catch(() => caches.match(ev.request))
+      // ⚠ UN ECHEC SANS CACHE DOIT RESTER UN ECHEC RESEAU. `caches.match`
+      // rend `undefined` quand rien n'est garde, et `respondWith(undefined)`
+      // leve une erreur obscure a la place du vrai message du navigateur.
+      .catch(() => caches.match(ev.request).then((r) => r || Response.error()))
   );
 });

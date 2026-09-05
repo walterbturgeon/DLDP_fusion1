@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v30</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v31</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3806,7 +3806,12 @@ function rlLiveSatMaj(force) {
   liveSatCharge = true; liveSatT = now;
   rlSatEtat('Chargement du fond...');
   var im = new Image();
-  im.crossOrigin = 'anonymous';
+  // ⚠ PAS DE `crossOrigin`. Il n'est utile que pour LIRE les pixels du
+  // canvas, ce que cette page ne fait jamais. En le posant, on exigeait
+  // du serveur d'Esri des en-tetes CORS qu'il ne donne pas toujours, et
+  // l'image echouait avec « fond satellite indisponible » sur une
+  // tablette pourtant bien connectee. Le canvas devient « teinte » : sans
+  // consequence ici, personne n'en relit les pixels.
   im.onload = function () {
     liveSatCharge = false; liveSatEchecs = 0;
     liveSatImg = im; liveSatCle = cle; liveSatCadre = cadre;
@@ -3818,9 +3823,13 @@ function rlLiveSatMaj(force) {
   im.onerror = function () {
     liveSatCharge = false; liveSatEchecs++;
     liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
+    // ⚠ ON N'INVENTE PAS LA CAUSE. « pas de reseau ? » envoyait chercher un
+    // defaut de connexion alors que la tablette etait bien connectee : le
+    // navigateur ne dit PAS pourquoi une image echoue. On nomme donc les
+    // causes possibles, sans en choisir une.
     rlSatEtat(liveSatEchecs >= 3
-      ? 'Fond satellite indisponible — arrêté après 3 échecs. Décoche et recoche pour réessayer.'
-      : 'Fond satellite indisponible (pas de réseau ?).');
+      ? 'Fond satellite : 3 échecs, arrêté. Décoche et recoche pour réessayer.'
+      : 'Fond satellite non reçu (serveur d’images injoignable, ou réseau). Nouvel essai dans 6 s.');
     if (liveVue) rlDessinerLiveCarte();
   };
   im.src = url;
@@ -3858,7 +3867,12 @@ function rlSatCharger() {
 
   rlSatEtat('Chargement du fond...');
   var im = new Image();
-  im.crossOrigin = 'anonymous';
+  // ⚠ PAS DE `crossOrigin`. Il n'est utile que pour LIRE les pixels du
+  // canvas, ce que cette page ne fait jamais. En le posant, on exigeait
+  // du serveur d'Esri des en-tetes CORS qu'il ne donne pas toujours, et
+  // l'image echouait avec « fond satellite indisponible » sur une
+  // tablette pourtant bien connectee. Le canvas devient « teinte » : sans
+  // consequence ici, personne n'en relit les pixels.
   im.onload = function () {
     rlSatImg = im; rlSatCle = cle;
     rlSatEtat('');
@@ -3869,13 +3883,18 @@ function rlSatCharger() {
   // présent alors qu'il n'y en a pas.
   im.onerror = function () {
     rlSatImg = null; rlSatCle = '';
-    rlSatEtat('Fond satellite indisponible (pas de réseau ?).');
+    rlSatEtat('Fond satellite non reçu (serveur d’images injoignable, ou réseau).');
     if (rlLapVu) rlDessinerTrace(rlLapVu.num);
   };
   im.src = url;
 }
 
 function rlToucher(ev) {
+  // ⚠⚠ RIEN A TOUCHER EN VUE LIVE. La carte du live se redessine a
+  // 5 Hz ; `rlAfficherPoint` redessinait par-dessus celle du TOUR, et
+  // les deux se remplacaient l'une l'autre -- la carte clignotait entre
+  // le live et le tour simule des qu'on posait le doigt dessus.
+  if (liveVue) return;
   if (!rlProj || !rlLapVu) return;
   var c = document.getElementById('speedMap');
   if (!c) return;
