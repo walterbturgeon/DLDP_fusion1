@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v33</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v35</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3789,11 +3789,51 @@ function rlCadrageCle(num, w, h) {
   return num + '|' + n + '|' + w + 'x' + h;
 }
 
+// ⚠ 0,20 m/pixel : le double de la limite mesuree (0,1 m/pixel le 5
+// septembre 2026). La marge protege des variations d'une zone a l'autre --
+// l'imagerie n'a pas le meme grain partout.
+var SAT_M_PAR_PX_MIN = 0.20;
+
 function rlSatUrl(sud, ouest, nord, est, w, h) {
-  // Imagerie mondiale d'Esri : une seule requête, pas de clé.
+  // ⚠ SIX DECIMALES, PAS QUINZE. JavaScript ecrit
+  // « -72.98806750130927 » ; six decimales valent 11 cm, largement au-dela
+  // de ce qu'un fond de carte montre. Une URL courte et propre evite qu'un
+  // serveur tranche mal une valeur qu'il n'attendait pas si longue.
+  function d6(v) { return (Math.round(v * 1e6) / 1e6).toFixed(6); }
+  // ⚠ ET UNE TAILLE PLAFONNEE. Le chemin des tours bornait deja sa hauteur
+  // a 460 px ; celui du live ne bornait RIEN. Sur un grand ecran il
+  // demandait une image bien plus lourde -- mesure ici : 4255 ms contre
+  // 601 ms pour une petite. Le fond n'a pas besoin de plus de 1024 px.
+  var W = Math.max(64, Math.min(1024, Math.round(w)));
+  var H = Math.max(64, Math.min(1024, Math.round(h)));
+
+  // ⚠⚠⚠ LA RESOLUTION DEMANDEE A UNE LIMITE, ET C'EST ELLE QUI FAISAIT
+  // ECHOUER LE FOND EN MODE LIVE. Mesure du 5 septembre 2026 sur ce
+  // serveur : 0,094 m/pixel ECHOUE, 0,109 m/pixel passe. L'imagerie
+  // mondiale n'existe pas plus fine, et le service refuse au lieu de
+  // rendre une image floue.
+  //
+  // Le chemin des TOURS demande le cadrage d'un tour entier -- des
+  // centaines de metres -- et reste donc toujours du bon cote. Le LIVE, lui,
+  // part d'un cadre de 50 m : sur 640 px cela fait 0,078 m/pixel, refuse.
+  // C'est pour cela que les onglets de tour marchaient et pas le live.
+  //
+  // ⚠ ON REDUIT L'IMAGE, PAS LE CADRE. Elargir le cadre trahirait le
+  // plancher de 50 m demande par l'utilisateur et deplacerait ce qu'il
+  // voit. Une image plus petite, etiree sur le canvas, montre exactement
+  // la meme zone -- simplement au grain que l'imagerie possede vraiment.
+  // Verifie : 50 m sur 320 px passe la ou 50 m sur 640 px echoue.
+  var largeurM = Math.abs(est - ouest) * 111320
+               * Math.cos((sud + nord) / 2 * Math.PI / 180);
+  var mParPx = largeurM / W;
+  if (largeurM > 0 && mParPx < SAT_M_PAR_PX_MIN) {
+    var f = mParPx / SAT_M_PAR_PX_MIN;
+    W = Math.max(64, Math.round(W * f));
+    H = Math.max(64, Math.round(H * f));
+  }
   return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export'
-       + '?bbox=' + ouest + ',' + sud + ',' + est + ',' + nord
-       + '&bboxSR=4326&imageSR=3857&size=' + w + ',' + h
+       + '?bbox=' + d6(ouest) + ',' + d6(sud) + ',' + d6(est) + ',' + d6(nord)
+       + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + H
        + '&format=png&transparent=false&f=image';
 }
 
@@ -3843,6 +3883,8 @@ var liveSatEchecs  = 0;
 // que le live a demandee, on compare deux chemins sans jamais voir en quoi
 // ils different.
 var liveSatDerniereUrl = '', liveSatDernierSort = '(aucune demande)';
+// ⚠ Le repli en demi-taille ne se tente qu'une fois par session de live.
+var liveSatReduit = false;
 // ⚠ 30 s, PAS 6. Le live redemande une image a chaque fois que la trace
 // sort du cadre ; a 6 s d'intervalle cela fait dix requetes par minute vers
 // un serveur d'images public, qui finit par refuser -- et le refus
@@ -3862,6 +3904,7 @@ var LIVE_ETENDUE_MIN = 50;   // metres, cote complet
 // [v32] Repartir a zero apres les trois echecs, sans decocher la case.
 function rlSatReessayer() {
   liveSatEchecs = 0; liveSatCharge = false; liveSatT = 0;
+  liveSatReduit = false;
   liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
   rlSatImg = null; rlSatCle = '';
   if (!rlSatVoulu) {
@@ -3949,6 +3992,14 @@ function rlLiveSatMaj(force) {
     rlSatEtat('Cadrage impossible (valeur invalide) — fond non demandé.');
     return;
   }
+  // ⚠ SOUS ~13 m DE LARGE, MEME UNE IMAGE DE 64 px RESTE TROP FINE pour
+  // l'imagerie, et le serveur refuse. On le DIT plutot que de bruler un
+  // essai sur une demande qu'on sait perdue d'avance.
+  if (demiL * 2 < 64 * SAT_M_PAR_PX_MIN) {
+    rlSatEtat('Zone trop petite pour une image satellite (moins de '
+            + Math.round(64 * SAT_M_PAR_PX_MIN) + ' m) — le fond viendra en roulant.');
+    return;
+  }
 
   liveSatCharge = true; liveSatT = now;
   liveSatDerniereUrl = url;
@@ -3976,6 +4027,38 @@ function rlLiveSatMaj(force) {
     liveSatCharge = false; liveSatEchecs++;
     liveSatImg = null; liveSatCle = ''; liveSatCadre = null;
     liveSatDernierSort = 'ECHEC apres ' + (Date.now() - tDemande) + ' ms (essai n°' + liveSatEchecs + ')';
+
+    // ⚠ UN SEUL REPLI, TOUT DE SUITE, EN PLUS PETIT. Une image trop lourde
+    // pour la liaison echoue sans dire pourquoi ; la meme en quart de
+    // surface passe souvent. On ne le tente qu'UNE fois : au-dela on
+    // masquerait un vrai defaut derriere des essais sans fin.
+    if (!liveSatReduit) {
+      liveSatReduit = true;
+      var urlPetite = rlSatUrl(lat(cadre.cy - demiH), lon(cadre.cx - demiL),
+                               lat(cadre.cy + demiH), lon(cadre.cx + demiL),
+                               Math.round(W / 2), Math.round(H / 2));
+      liveSatCharge = true;
+      liveSatDerniereUrl = urlPetite;
+      liveSatDernierSort = 'repli en demi-taille, en cours...';
+      rlSatEtat('Nouvel essai en image plus petite...');
+      var t2 = Date.now(), im2 = new Image();
+      im2.onload = function () {
+        liveSatCharge = false; liveSatEchecs = 0;
+        liveSatImg = im2; liveSatCle = cle; liveSatCadre = cadre;
+        liveSatDernierSort = 'RECUE en demi-taille en ' + (Date.now() - t2) + ' ms, '
+                           + im2.naturalWidth + 'x' + im2.naturalHeight + ' px';
+        rlSatEtat('');
+        if (liveVue) rlDessinerLiveCarte();
+      };
+      im2.onerror = function () {
+        liveSatCharge = false;
+        liveSatDernierSort = 'ECHEC aussi en demi-taille, apres ' + (Date.now() - t2) + ' ms';
+        rlSatEtat('Fond non reçu, même en image réduite. Lance le test en bas de page.');
+        if (liveVue) rlDessinerLiveCarte();
+      };
+      im2.src = urlPetite;
+      return;
+    }
     // ⚠ ON N'INVENTE PAS LA CAUSE. « pas de reseau ? » envoyait chercher un
     // defaut de connexion alors que la tablette etait bien connectee : le
     // navigateur ne dit PAS pourquoi une image echoue. On nomme donc les
@@ -4530,6 +4613,7 @@ async function rlLiveBascule() {
       // origine ; le garder poserait une image d'ailleurs sous la
       // nouvelle trace, sans que rien ne le dise.
       liveSatImg = null; liveSatCle = ''; liveSatCadre = null; liveSatEchecs = 0;
+      liveSatReduit = false;
       rlVoirLive();
       rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
     } else {
