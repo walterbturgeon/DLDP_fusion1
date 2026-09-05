@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v17</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v18</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -421,6 +421,10 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
   <canvas id="speedMap" style="width:100%;margin-top:10px;border-radius:10px;display:none;touch-action:none;cursor:crosshair;"
           onpointerdown="rlToucher(event)" onpointermove="if(event.buttons)rlToucher(event)"></canvas>
   <div id="pointInfo" class="small" style="margin-top:8px;min-height:1.2em;"></div>
+  <!-- ⚠ LES ONGLETS SONT SOUS LA CARTE, PAS AU-DESSUS. Au-dessus, ils
+       repousseraient la carte hors de l'ecran sur un telephone des qu'il y
+       a quelques tours. Le premier onglet, a gauche, est TOUJOURS Live. -->
+  <div id="carteOnglets" style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;"></div>
   <div id="speedLegend" class="small" style="margin-top:6px;"></div>
   <div id="relaisTours" style="margin-top:14px;"></div>
 
@@ -3411,6 +3415,122 @@ var liveDernier = null;
 var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
 
 // =====================================================================
+// LA CARTE DU LIVE  --  sa PROPRE trace, sans attendre un tour
+// =====================================================================
+// ⚠⚠ ELLE NE PEUT PAS EMPRUNTER L'ORIGINE D'UN TOUR. La carte des tours
+// est en metres depuis l'origine de projection du module, qui n'arrive
+// qu'avec un resume de tour. Attendre ce resume, c'est attendre un tour
+// entier -- exactement ce qu'on veut eviter.
+//
+// Le live prend donc SON PREMIER POINT VALIDE comme origine et construit
+// sa propre projection. Elle est independante de tout tour, et elle
+// existe des la premiere seconde.
+var liveTrace = [];          // {dx, dy, kmh} en metres depuis liveOrigine
+var liveOrigine = null;      // {lat, lon} -- le premier point valide recu
+var liveVue = false;         // l'onglet Live est-il celui qu'on regarde
+var LIVE_TRACE_MAX = 3000;   // 10 minutes a 5 Hz
+
+function rlOngletsRendre() {
+  var e = document.getElementById('carteOnglets');
+  if (!e) return;
+  // ⚠ L'ONGLET LIVE EST TOUJOURS LE PREMIER, meme sans aucun point. Sa
+  // place ne doit pas dependre de ce qui est arrive : un onglet qui se
+  // deplace se cherche a chaque fois.
+  var h = '<button type="button" class="btn ' + (liveVue ? '' : 'btn2')
+        + '" style="margin-top:0;padding:6px 12px;font-size:13px;"'
+        + ' onclick="rlVoirLive()">Live'
+        + (liveTrace.length ? ' (' + liveTrace.length + ')' : '') + '</button>';
+  for (var i = 0; i < rlLaps.length; i++) {
+    var l = rlLaps[i];
+    var actif = (!liveVue && rlLapVu && rlLapVu.num === l.num);
+    h += '<button type="button" class="btn ' + (actif ? '' : 'btn2')
+       + '" style="margin-top:0;padding:6px 12px;font-size:13px;"'
+       + ' onclick="rlVoir(' + l.num + ')">#' + l.num + '</button>';
+  }
+  e.innerHTML = h;
+}
+
+function rlVoirLive() {
+  liveVue = true;
+  rlPointVu = null;
+  rlOngletsRendre();
+  rlDessinerLiveCarte();
+}
+
+// Dessine la trace du live, avec sa propre echelle.
+function rlDessinerLiveCarte() {
+  var c = document.getElementById('speedMap');
+  if (!c) return;
+  var info = document.getElementById('pointInfo');
+
+  // ⚠ ON MONTRE LA CARTE DES LE PREMIER POINT, mais pas avant : deux
+  // points sont necessaires pour tracer un segment. Avant ca on DIT ce
+  // qu'on attend, au lieu de laisser un cadre vide.
+  if (liveTrace.length < 2) {
+    c.style.display = 'none';
+    if (info) info.textContent = liveTrace.length
+      ? 'Live : 1 point reçu, il en faut deux pour tracer.'
+      : 'Live : en attente du premier point avec un fix GPS.';
+    return;
+  }
+  c.style.display = '';
+
+  var W = c.clientWidth || 600, H = Math.round(W * 0.66);
+  var dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
+  c.style.height = H + 'px';
+  var g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  var xs = liveTrace.map(function (p) { return p.dx; });
+  var ys = liveTrace.map(function (p) { return p.dy; });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+  var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var pad = 24;
+  // ⚠ UNE ECHELLE UNIQUE POUR LES DEUX AXES. Deux echelles differentes
+  // etireraient la trajectoire et rendraient un virage rond pour un ovale.
+  var ech = Math.min((W - 2 * pad) / Math.max(1, x1 - x0),
+                     (H - 2 * pad) / Math.max(1, y1 - y0));
+  var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  var X = function (v) { return W / 2 + (v - cx) * ech; };
+  var Y = function (v) { return H / 2 - (v - cy) * ech; };
+
+  var vs = liveTrace.map(function (p) { return p.kmh; });
+  var vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
+  if (vmax - vmin < 1) vmax = vmin + 1;
+
+  g.lineWidth = 4; g.lineCap = 'round';
+  for (var i = 1; i < liveTrace.length; i++) {
+    g.strokeStyle = rlCouleur((liveTrace[i - 1].kmh + liveTrace[i].kmh) / 2, vmin, vmax);
+    g.beginPath();
+    g.moveTo(X(liveTrace[i - 1].dx), Y(liveTrace[i - 1].dy));
+    g.lineTo(X(liveTrace[i].dx), Y(liveTrace[i].dy));
+    g.stroke();
+  }
+
+  // La ligne virtuelle, si le module la donne calibree.
+  // ⚠ Elle est dans le repere du MODULE, pas dans celui du live. On ne la
+  // trace donc PAS ici : la poser avec la mauvaise origine la placerait a
+  // des dizaines de metres de sa vraie position, sans que rien ne le dise.
+
+  // Le point courant, au bout de la trace.
+  var d = liveTrace[liveTrace.length - 1];
+  g.fillStyle = '#ffffff'; g.strokeStyle = '#111111'; g.lineWidth = 2;
+  g.beginPath(); g.arc(X(d.dx), Y(d.dy), 7, 0, Math.PI * 2); g.fill(); g.stroke();
+
+  if (info) {
+    info.innerHTML = '<b>' + Math.round(uniVit(d.kmh)) + ' ' + uniVitU() + '</b>'
+      + ' &nbsp; ' + liveTrace.length + ' points &nbsp; '
+      + Math.round(Math.max(x1 - x0, y1 - y0)) + ' m d\'étendue';
+  }
+  var lg = document.getElementById('speedLegend');
+  if (lg) lg.textContent = 'Vert = lent, rouge = rapide ('
+    + Math.round(uniVit(vmin)) + ' à ' + Math.round(uniVit(vmax)) + ' '
+    + uniVitU() + '). Trace en direct, pas un tour.';
+}
+
+// =====================================================================
 // DESSINER LE LIVE SUR LA CARTE DE VITESSE
 // =====================================================================
 // Deux choses par-dessus la trace deja tracee :
@@ -3495,6 +3615,11 @@ async function rlLiveBascule() {
       liveSeqPrec = null; liveRecus = 0; liveManques = 0;
       liveT0 = 0; liveOctets = 0; liveGigueMax = 0;
       liveArrPrec = 0; liveSrcPrec = 0;
+      // ⚠ ON BASCULE SUR L'ONGLET TOUT DE SUITE. L'utilisateur qui appuie
+      // sur Live veut VOIR le live -- le laisser sur un tour l'obligerait a
+      // chercher, et il croirait que rien n'arrive.
+      liveTrace = []; liveOrigine = null;
+      rlVoirLive();
       rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
     } else {
       rlEtat('Live arrêté.');
@@ -3558,7 +3683,23 @@ function rlDecodeLive(b) {
       hy: hy7 / 63
     };
   }
-  rlDessinerLive();
+  // ---- accumuler la trace du live, dans SON repere ----
+  if (valide) {
+    if (!liveOrigine) liveOrigine = { lat: lat, lon: lon };
+    var R = 6371000, rad = Math.PI / 180;
+    liveTrace.push({
+      dy: (lat - liveOrigine.lat) * rad * R,
+      dx: (lon - liveOrigine.lon) * rad * R * Math.cos(liveOrigine.lat * rad),
+      kmh: kmh
+    });
+    // ⚠ ON PLAFONNE. Sans limite, dix minutes de live font 3000 points et
+    // une heure en fait 18000 -- le dessin ralentirait jusqu'a bloquer la
+    // page, sur l'appareil meme dont on a besoin en piste.
+    if (liveTrace.length > LIVE_TRACE_MAX) liveTrace.shift();
+  }
+  rlOngletsRendre();
+  if (liveVue) rlDessinerLiveCarte();
+  else         rlDessinerLive();
 
   // ---- affichage ----
   var bloc = document.getElementById('liveBloc');
@@ -3697,7 +3838,7 @@ function rlSimulerTour() {
 
 function rlVoir(num) {
   for (var i = 0; i < rlLaps.length; i++) {
-    if (rlLaps[i].num === num) { rlLapVu = rlLaps[i]; rlRendre(); return; }
+    if (rlLaps[i].num === num) { liveVue = false; rlLapVu = rlLaps[i]; rlRendre(); rlOngletsRendre(); return; }
   }
 }
 
