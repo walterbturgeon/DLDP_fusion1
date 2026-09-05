@@ -260,7 +260,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v14</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v15</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -1871,6 +1871,23 @@ function majObd(o) {
     }
   }
 
+  // ---- ⚠⚠ L'ORDRE DE LA LISTE CONTRE CELUI DU FIRMWARE ----
+  // Le 13e champ de `dspN` est un INDICE dans la table OBD du firmware, pas
+  // un numero de PID. Si `OBD_LISTE` de cette page cesse de suivre le meme
+  // ordre, l'ecran du module affichera le regime sous l'etiquette de la
+  // temperature d'eau -- un chiffre CREDIBLE ET FAUX, que rien ne trahirait.
+  // Le module envoie son ordre reel dans `o.pid[]` : on le compare.
+  var desordre = [];
+  for (var q = 0; q < OBD_LISTE.length && q < o.pid.length; q++) {
+    if (OBD_LISTE[q].pid !== o.pid[q]) desordre.push(q);
+  }
+  if (desordre.length) {
+    e.innerHTML += "<br><b style='color:var(--err-ink)'>&#9888; La liste de cette page "
+      + "ne suit plus l'ordre du firmware (" + desordre.length + " ecart(s)). "
+      + "Ne choisis PAS de paramètre OBD pour l'écran tant que ce n'est pas corrigé "
+      + "— la valeur affichée ne correspondrait pas à son étiquette.</b>";
+  }
+
   // ---- Le tableau ----
   var h = '';
   for (var i = 0; i < o.pid.length; i++) {
@@ -2088,6 +2105,33 @@ var dspDisponible = false;   // le firmware connecte annonce-t-il `dsp0` ?
 // par l'octet 0, trois valeurs de 16 bits par sous-trame en petit
 // boutiste. Le canal N vit dans la sous-trame N/3, au slot N%3.
 // Le firmware fait le decodage ; ici on ne montre qu'un nom.
+// ⚠⚠ CETTE LISTE DOIT SUIVRE L'ORDRE DE LA TABLE `OBD[]` DU FIRMWARE.
+// Le 13e champ de la chaine `dspN` est un INDICE dans cette table, pas un
+// numero de PID. Si les deux ordres divergent, l'ecran affichera le regime
+// sous l'etiquette de la temperature d'eau, SANS QUE RIEN NE LE SIGNALE.
+//
+// ⚠ Un garde-fou existe : quand le module est connecte en mode OBD2, il
+// envoie `obd.pid[]` dans son JSON. `obdVerifierOrdre()` compare et CRIE
+// si l'ordre ne correspond plus. C'est la seule facon de rendre visible
+// une divergence qui, autrement, produirait des chiffres credibles et faux.
+var OBD_LISTE = [
+  { pid: 0x0C, nom: 'OBD - Regime moteur' },
+  { pid: 0x0D, nom: 'OBD - Vitesse vehicule' },
+  { pid: 0x05, nom: 'OBD - Temperature liquide' },
+  { pid: 0x0B, nom: 'OBD - Pression collecteur' },
+  { pid: 0x11, nom: 'OBD - Position papillon' },
+  { pid: 0x04, nom: 'OBD - Charge moteur' },
+  { pid: 0x0F, nom: 'OBD - Temperature air admission' },
+  { pid: 0x10, nom: 'OBD - Debit d air (MAF)' },
+  { pid: 0x0E, nom: 'OBD - Avance a l allumage' },
+  { pid: 0x42, nom: 'OBD - Tension du calculateur' },
+  { pid: 0x5C, nom: 'OBD - Temperature d huile' },
+  { pid: 0x33, nom: 'OBD - Pression barometrique' }
+];
+// Les valeurs OBD occupent 100 a 111 dans le menu deroulant, pour ne pas
+// se melanger aux canaux Link (0 a 37) ni aux codes -1 et -2.
+var OBD_BASE = 100;
+
 var LINK_CANAUX = [
   'Regime moteur — RPM',
   'Pression admission MAP — kPa',
@@ -2144,6 +2188,9 @@ function dspBlocHtml(i) {
   var options = '<option value="-2">— Rien, laisser vide —</option>';
   for (var k = 0; k < LINK_CANAUX.length; k++) {
     options += '<option value="' + k + '">' + LINK_CANAUX[k] + '</option>';
+  }
+  for (var o = 0; o < OBD_LISTE.length; o++) {
+    options += '<option value="' + (OBD_BASE + o) + '">' + OBD_LISTE[o].nom + '</option>';
   }
   options += '<option value="-1">Autre — reglage manuel</option>';
 
@@ -2255,6 +2302,16 @@ function dspChangeCanal(i) {
   var canal = parseInt(document.getElementById(p + 'canal').value, 10);
   document.getElementById(p + 'manuel').style.display = (canal === -1) ? '' : 'none';
 
+  if (canal >= OBD_BASE) {
+    // ⚠ UN PARAMETRE OBD NE TOUCHE PAS A L'IDENTIFIANT. Les reponses
+    // arrivent sur les identifiants normalises 0x7E8 a 0x7EF, que le
+    // firmware connait seul. Pre-remplir l'identifiant du Generic Dash
+    // ici laisserait croire qu'il compte pour quelque chose.
+    document.getElementById(p + 'en').checked = true;
+    dspApercu(i);
+    return;
+  }
+
   if (canal >= 0) {
     // La structure du flux est imposee : on ne garde que l'identifiant,
     // et on pre-remplit celui du Generic Dash.
@@ -2295,6 +2352,11 @@ function dspLireChamps(i) {
 function dspErreur(v) {
   // Rien a afficher : aucun controle a faire.
   if (v.canal === -2) return '';
+  // ⚠ UN PARAMETRE OBD N'A RIEN A VALIDER. Le protocole impose l'octet, la
+  // taille et l'echelle ; le firmware sort avant de regarder les champs
+  // manuels. Les controler ici refuserait une configuration parfaitement
+  // valide, et l'utilisateur ne saurait pas pourquoi.
+  if (v.canal >= OBD_BASE) return '';
 
   if (isNaN(v.id) || v.id < 0)                   return 'Identifiant CAN manquant.';
 
@@ -2326,9 +2388,14 @@ function dspErreur(v) {
 // relire sans erreur. Le nom ne peut pas contenir de virgule, donc
 // l'ajout est sans ambiguite.
 function dspVersTexte(v) {
-  var gd = (v.canal >= 0) ? v.canal : -1;
+  // ⚠ TROIS FAMILLES, TROIS ENCODAGES. Un canal Link va dans le 12e champ,
+  // un parametre OBD dans le 13e, et les deux ne doivent JAMAIS etre poses
+  // ensemble : le firmware sort des qu'il voit un OBD, et les champs
+  // manuels ne servent alors plus.
+  var obd = (v.canal >= OBD_BASE) ? (v.canal - OBD_BASE) : -1;
+  var gd  = (v.canal >= 0 && v.canal < OBD_BASE) ? v.canal : -1;
   return [v.en, v.id, v.ext, v.off, v.len, v.fmt, v.be,
-          v.mul, v.add, v.dec, v.nom, gd].join(',');
+          v.mul, v.add, v.dec, v.nom, gd, obd].join(',');
 }
 
 function dspDepuisTexte(t) {
@@ -2336,6 +2403,10 @@ function dspDepuisTexte(t) {
   if (c.length < 10) return null;
   var gd = (c.length >= 12) ? parseInt(c[11], 10) : -1;
   if (isNaN(gd)) gd = -1;
+  // 13e champ : parametre OBD. Absent sur une chaine d'une version
+  // anterieure, ce qui doit rester lisible sans erreur.
+  var obd = (c.length >= 13) ? parseInt(c[12], 10) : -1;
+  if (isNaN(obd)) obd = -1;
   var en = parseInt(c[0], 10) ? 1 : 0;
   return {
     en: en, id: parseInt(c[1], 10) || 0,
@@ -2346,7 +2417,7 @@ function dspDepuisTexte(t) {
     nom: (c.length >= 12) ? c[10] : c.slice(10).join(','),
     // Ce que le menu deroulant doit montrer : un canal Link, sinon
     // « manuel » si la valeur est active, sinon « rien ».
-    canal: (gd >= 0) ? gd : (en ? -1 : -2)
+    canal: (obd >= 0) ? (OBD_BASE + obd) : ((gd >= 0) ? gd : (en ? -1 : -2))
   };
 }
 
@@ -2368,6 +2439,17 @@ function dspApercu(i) {
   }
   if (v.canal === -2) {
     el.textContent = 'Cette moitie de l’ecran restera vide.';
+    return;
+  }
+
+  if (v.canal >= OBD_BASE) {
+    var o = OBD_LISTE[v.canal - OBD_BASE];
+    var hx = ('0' + o.pid.toString(16).toUpperCase()).slice(-2);
+    el.innerHTML = "Lu par <b>requête OBD-II</b>, service 01, PID <b>0x" + hx + "</b>."
+      + " Le module interroge le véhicule et lit la réponse&nbsp;; l'octet, la"
+      + " taille et l'échelle sont imposés par la norme, il n'y a rien à régler."
+      + "<br>&#9888; Cette valeur n'apparaîtra que si le <b>protocole du bus CAN</b>"
+      + " est réglé sur <b>OBD-II standard</b>.";
     return;
   }
 
