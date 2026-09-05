@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v36</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v37</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -4394,6 +4394,19 @@ var liveT0 = 0, liveOctets = 0;
 var liveArrPrec = 0, liveSrcPrec = 0;
 var liveGigueMax = 0;
 var liveDernier = null;
+// [v37] ⚠ SANS DUREE, UN NOMBRE DE PERTES NE VEUT RIEN DIRE. « 30 perdus »
+// sur dix secondes ou sur une heure ne decrivent pas le meme lien. On
+// retient donc l'instant du premier paquet du flux.
+var liveDebutMs = 0;
+// Nombre de fois ou le module s'est TU : trou de sequence trop grand pour
+// le temps ecoule. Ce ne sont pas des pertes -- personne n'emettait.
+var liveSilences = 0;
+// La cadence que le firmware annonce (LIVE_PERIODE_MS = 200 ms, 5 Hz).
+var LIVE_PERIODE_MS_ATTENDUE = 200;
+// ⚠ Le module peut emettre le live sans que CETTE page l'ait demande : une
+// autre page, la touche `y` du banc, ou un live reste allume. Les compteurs
+// couvrent alors une periode qu'on ne maitrise pas, et il faut le DIRE.
+var liveDemandeParLaPage = false;
 var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
 
 // [v19] LES CANAUX CAN RECUS EN DIRECT
@@ -4659,6 +4672,12 @@ async function rlLiveBascule() {
       liveSeqPrec = null; liveRecus = 0; liveManques = 0;
       liveT0 = 0; liveOctets = 0; liveGigueMax = 0;
       liveArrPrec = 0; liveSrcPrec = 0;
+      // ⚠ LA REMISE A ZERO EFFACE CE QU'ON MESURAIT. Le firmware repart lui
+      // aussi de la sequence 0. C'est pour cela qu'appuyer sur Live faisait
+      // « disparaitre » les pertes : elles n'etaient pas corrigees, elles
+      // etaient effacees. La duree affichee a cote du compte le dit
+      // maintenant, et l'origine du flux aussi.
+      liveDebutMs = 0; liveSilences = 0; liveDemandeParLaPage = true;
       // ⚠ ON BASCULE SUR L'ONGLET TOUT DE SUITE. L'utilisateur qui appuie
       // sur Live veut VOIR le live -- le laisser sur un tour l'obligerait a
       // chercher, et il croirait que rien n'arrive.
@@ -4672,6 +4691,7 @@ async function rlLiveBascule() {
       rlVoirLive();
       rlEtat('Live demandé. Les premiers points doivent arriver en une seconde.');
     } else {
+      liveDemandeParLaPage = false;
       rlEtat('Live arrêté.');
     }
     rlLiveMaj();
@@ -4736,7 +4756,30 @@ function rlDecodeLive(b) {
   if (liveSeqPrec !== null) {
     var d = (seq - liveSeqPrec) & 0xFFFF;
     if (d > 1) saut = true;
-    if (d > 1 && d < 1000) liveManques += (d - 1);   // 1000 = repli, pas un trou
+    // ⚠⚠ UN SILENCE N'EST PAS UNE PERTE. Un trou de sequence ne compte que
+    // si le TEMPS ecoule pouvait vraiment porter ces paquets : a 5 Hz, dix
+    // paquets manques demandent deux secondes. Si le module s'est tu -- live
+    // eteint, radio arretee, appareil endormi -- personne n'emettait, et
+    // rien n'a ete perdu. Compter ce silence gonflait le nombre de pertes
+    // et faisait passer un lien sain pour un lien mauvais.
+    // Le critere est le temps INEXPLIQUE : d paquets a 5 Hz demandent
+    // d x 200 ms. Si l'attente reelle depasse largement ce compte, le
+    // module s'est tu pendant la difference -- il n'emettait pas, donc
+    // rien n'a ete perdu.
+    // ⚠ ON CLASSE EN SILENCE DES LE DOUTE. Un silence ou le lien a AUSSI
+    // perdu des paquets sera sous-compte : c'est voulu. Mieux vaut
+    // sous-estimer la perte que faire passer un lien sain pour mauvais --
+    // c'est precisement l'erreur qu'on repare ici.
+    var dtMs = liveArrPrec ? (arr - liveArrPrec) : 0;
+    var attenduMs = d * LIVE_PERIODE_MS_ATTENDUE;
+    if (d > 1 && d < 1000) {
+      if (dtMs > attenduMs * 2 + 1000) liveSilences++;
+      else                             liveManques += (d - 1);
+    }
+  } else {
+    // Premier paquet du flux : on note l'instant, pour dire DEPUIS QUAND on
+    // compte. « 30 perdus » ne veut rien dire sans la duree qui va avec.
+    liveDebutMs = arr;
   }
   liveSeqPrec = seq;
   liveRecus++;
@@ -4821,15 +4864,21 @@ function rlDecodeLive(b) {
   if (bloc) bloc.style.display = '';
   var total = liveRecus + liveManques;
   var perte = total ? (100 * liveManques / total) : 0;
+  // ⚠ LA DUREE VA AVEC LE COMPTE. « 30 perdus » sur dix secondes et sur une
+  // heure ne decrivent pas le meme lien.
+  var duree = liveDebutMs ? Math.max(1, Math.round((arr - liveDebutMs) / 1000)) : 0;
   var lignes = [
     ['Position',  valide ? (lat.toFixed(6) + ', ' + lon.toFixed(6)) : 'pas de fix'],
     ['Vitesse',   uniVit(kmh).toFixed(1) + (uniImp ? ' mph' : ' km/h')],
     ['Satellites', sats + '  (fix ' + fix + ')'],
-    ['Paquets',   liveRecus + ' reçus, <b>' + liveManques + ' perdus</b>'],
+    ['Paquets',   liveRecus + ' reçus, <b>' + liveManques + ' perdus</b>'
+                + (duree ? ' <span style="opacity:.7">en ' + duree + ' s</span>' : '')],
     ['Perte',     perte.toFixed(1) + ' %'],
     ['Débit',     Math.round(liveOctets / secs) + ' o/s'],
     ['Gigue max', Math.round(liveGigueMax) + ' ms']
   ];
+  if (liveSilences) lignes.push(['Silences', liveSilences + ' <span style="opacity:.7">(module muet, pas des pertes)</span>']);
+  if (!liveDemandeParLaPage) lignes.push(['&#9888; Origine', 'live <b>non demandé par cette page</b>']);
   var h = '';
   lignes.forEach(function (r) {
     h += "<div class='small'>" + r[0] + "</div><div><b>" + r[1] + "</b></div>";
