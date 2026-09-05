@@ -278,7 +278,7 @@ tr.chGlisse{opacity:.45;background:var(--line);}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v23</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v24</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3917,12 +3917,25 @@ function rlDessinerLiveCarte() {
   if (vmax - vmin < 1) vmax = vmin + 1;
 
   g.lineWidth = 4; g.lineCap = 'round';
+  var trous = 0;
   for (var i = 1; i < liveTrace.length; i++) {
-    g.strokeStyle = rlCouleur((liveTrace[i - 1].kmh + liveTrace[i].kmh) / 2, vmin, vmax);
     g.beginPath();
     g.moveTo(X(liveTrace[i - 1].dx), Y(liveTrace[i - 1].dy));
     g.lineTo(X(liveTrace[i].dx), Y(liveTrace[i].dy));
-    g.stroke();
+    // ⚠⚠ UN TROU NE SE TRACE PAS COMME UNE TRAJECTOIRE. Des paquets
+    // manquent entre ces deux points : la voiture est passee ailleurs, et
+    // personne ne sait ou. Un pointille gris fin le DIT, la ou un trait
+    // plein inventait un parcours.
+    if (liveTrace[i].saut) {
+      trous++;
+      g.setLineDash([3, 6]); g.lineWidth = 1.5;
+      g.strokeStyle = 'rgba(128,128,128,0.75)';
+      g.stroke();
+      g.setLineDash([]); g.lineWidth = 4;
+    } else {
+      g.strokeStyle = rlCouleur((liveTrace[i - 1].kmh + liveTrace[i].kmh) / 2, vmin, vmax);
+      g.stroke();
+    }
   }
 
   // La ligne virtuelle, si le module la donne calibree.
@@ -3943,7 +3956,9 @@ function rlDessinerLiveCarte() {
   var lg = document.getElementById('speedLegend');
   if (lg) lg.textContent = 'Vert = lent, rouge = rapide ('
     + Math.round(uniVit(vmin)) + ' à ' + Math.round(uniVit(vmax)) + ' '
-    + uniVitU() + '). Trace en direct, pas un tour.';
+    + uniVitU() + '). Trace en direct, pas un tour.'
+    + (trous ? '  ⚠ ' + trous + ' coupure(s) du lien : les pointillés gris sont'
+             + ' des trous, pas un parcours. Rien n\'est retransmis.' : '');
 
   // ⚠ EN DERNIER, APRES LE DESSIN. rlLiveSatMaj() peut lancer un
   // chargement qui redessinera la carte : l'appeler avant ferait dessiner
@@ -4103,8 +4118,15 @@ function rlDecodeLive(b) {
   var arr   = performance.now();
 
   // ---- pertes, par les trous dans la sequence ----
+  // [v24] `saut` retient qu'il MANQUE des points juste avant celui-ci.
+  // ⚠ Sans lui, la carte reliait les deux bords du trou par un trait plein
+  // et dessinait une trajectoire qui n'a jamais eu lieu. Sur un essai de
+  // PORTEE, c'est exactement l'endroit ou le lien decroche : le masquer
+  // ferait rendre un lien mediocre pour un bon.
+  var saut = false;
   if (liveSeqPrec !== null) {
     var d = (seq - liveSeqPrec) & 0xFFFF;
+    if (d > 1) saut = true;
     if (d > 1 && d < 1000) liveManques += (d - 1);   // 1000 = repli, pas un trou
   }
   liveSeqPrec = seq;
@@ -4173,7 +4195,8 @@ function rlDecodeLive(b) {
     liveTrace.push({
       dy: (lat - liveOrigine.lat) * rad * R,
       dx: (lon - liveOrigine.lon) * rad * R * Math.cos(liveOrigine.lat * rad),
-      kmh: kmh
+      kmh: kmh,
+      saut: saut
     });
     // ⚠ ON PLAFONNE. Sans limite, dix minutes de live font 3000 points et
     // une heure en fait 18000 -- le dessin ralentirait jusqu'a bloquer la
