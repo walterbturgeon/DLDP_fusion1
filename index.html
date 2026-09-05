@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v37</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v38</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -899,7 +899,10 @@ GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
 <option value="50">20 Hz</option>
 <option value="40">25 Hz</option>
 <option value="33">30 Hz (plafond module)</option>
-<option value="0">Esclave (ecoute seule, n'impose rien)</option>
+<!-- ⚠ « Esclave » (valeur 0) EST RETIRE. Le firmware l'a supprime en v7.0 et
+     REFUSE cette valeur. Or il refuse la configuration ENTIERE sur un seul
+     champ invalide : choisir cette ligne faisait echouer toute la
+     sauvegarde, sans dire quel champ bloquait. On croyait le bouton casse. -->
 </select>
 
 <label for="dynm">Modèle dynamique du GPS</label>
@@ -1276,10 +1279,21 @@ function nettoieJeton(t) {
     .replace(/^["'<]+|[">']+$/g, '');              // guillemets, chevrons de mail
 }
 
-function getGhToken() { return localStorage.getItem('ghToken') || ''; }
+// ⚠⚠ CHAQUE ACCES AU STOCKAGE EST PROTEGE, ET C'EST OBLIGATOIRE.
+// `localStorage` LEVE UNE EXCEPTION dans plusieurs cas ordinaires : onglet
+// prive, stockage bloque par le navigateur, quota plein. Cette fonction
+// etait appelee au NIVEAU DU MODULE, plus bas dans ce meme script : une
+// exception ici arretait tout le script. Le relais, le live et le journal
+// de diagnostic n'existaient tout simplement pas -- et la page ne montrait
+// AUCUNE erreur. Elle avait juste l'air morte.
+function getGhToken() {
+  try { return localStorage.getItem('ghToken') || ''; }
+  catch (e) { return ''; }
+}
 function resetGhToken() {
-  localStorage.removeItem('ghToken');
-  document.getElementById('dumpStatus').textContent = 'Jeton effacé. Il te sera redemandé au prochain envoi.';
+  try { localStorage.removeItem('ghToken'); } catch (e) {}
+  var ds = document.getElementById('dumpStatus');
+  if (ds) ds.textContent = 'Jeton effacé. Il te sera redemandé au prochain envoi.';
   showGhTokenState();
 }
 
@@ -1396,7 +1410,10 @@ function demandeJeton() {
     if (!token) throw new Error('jeton requis');
     token = nettoieJeton(token);
     if (!token) throw new Error('jeton vide apres nettoyage');
-    localStorage.setItem('ghToken', token);
+    // ⚠ UN STOCKAGE REFUSE NE DOIT PAS FAIRE ECHOUER L'ENVOI. Le jeton
+    // vient d'etre saisi : il sert pour CET envoi. Ne pas pouvoir le
+    // garder est un desagrement, pas une panne.
+    try { localStorage.setItem('ghToken', token); } catch (e) {}
   }
   return token;
 }
@@ -1431,7 +1448,9 @@ async function envoieRun(token, dossier, run) {
 
   var err = await res.text();
   if (res.status === 401) {
-    localStorage.removeItem('ghToken');
+    // ⚠ Le message qui compte est le 401. Une exception du stockage prendrait
+    // sa place et ferait chercher un defaut ailleurs.
+    try { localStorage.removeItem('ghToken'); } catch (e) {}
     throw new Error('401 : jeton invalide ou expire. Il a ete efface, on vous le redemandera.');
   }
   if (res.status === 403) throw new Error('403 : jeton sans droit d ecriture (il faut Contents: Read and write).');
@@ -1564,9 +1583,28 @@ function perfLabel(st, el) {
 async function perfReset() { await writeCommand('reset'); }
 async function perfSim() { await writeCommand('sim'); }
 
+// ⚠⚠ UN JSON ILLISIBLE SE COMPTE ET SE DIT. Les trois lectures de ce
+// fichier faisaient « catch (e) { return; } » : un JSON tronque ou casse
+// disparaissait sans laisser la moindre trace. Ce projet a deja perdu des
+// heures sur un JSON devenu trop long pour le MTU, qui cessait de partir
+// SANS ERREUR -- c'est ce defaut-la que ces compteurs rendent visible.
+var jsonCasses = { tele: 0, etat: 0, config: 0 };
+function jsonRate(quoi, e) {
+  jsonCasses[quoi]++;
+  // La telemetrie arrive dix fois par seconde : on n'ecrit qu'aux
+  // premieres, puis de loin en loin. Un message par notification rendrait
+  // la console -- et le journal -- illisibles.
+  var n = jsonCasses[quoi];
+  if (n <= 3 || n % 50 === 0) {
+    diagNoter('⚠ JSON ' + quoi + ' illisible (' + n + ' fois) : ' + (e && e.message ? e.message : e));
+  }
+  return n;
+}
+
 function onTelemetry(ev) {
   var j;
-  try { j = JSON.parse(dec.decode(ev.target.value)); } catch (e) { return; }
+  try { j = JSON.parse(dec.decode(ev.target.value)); }
+  catch (e) { jsonRate('tele', e); return; }
 
   if (j.now < nowSrv) { buf = []; }
   nowSrv = j.now;
@@ -1897,7 +1935,8 @@ showGhTokenState();   // etat du jeton des le chargement (import QR inclus)
 async function refreshState() {
   if (!chrState) return;
   var j;
-  try { j = JSON.parse(dec.decode(await chrState.readValue())); } catch (e) { return; }
+  try { j = JSON.parse(dec.decode(await chrState.readValue())); }
+  catch (e) { jsonRate('etat', e); return; }
 
   var rows = [];
   rows.push(['Mode actif', j.mode]);
@@ -5006,7 +5045,16 @@ function rlVoir(num) {
   }
 }
 
-window.addEventListener('resize', function () { if (rlLapVu) rlDessinerTrace(rlLapVu.num); });
+// ⚠⚠ CE DEUXIEME ECOUTEUR `resize` EST RETIRE, ET C'EST UN CORRECTIF.
+// Il datait d'avant la v36. Il n'avait AUCUN anti-rebond et ignorait le
+// mode live : pendant une rotation de tablette, il redessinait la carte du
+// TOUR par-dessus celle du LIVE, a chaque evenement de la rafale. C'est ce
+// qui faisait disparaitre la carte a la rotation -- le correctif v36 la
+// redessinait bien, et cette vieille ligne la recouvrait aussitot.
+//
+// `rlTailleChangee`, pose plus haut, fait deja tout le travail : il attend
+// la fin de la rafale, il sait s'il faut dessiner le live ou un tour, et il
+// relance le fond satellite. Ne remets pas de second ecouteur ici.
 
 
 var CAPS = [
@@ -5138,7 +5186,22 @@ function syncBitrateToMode() {
 async function refreshConfig() {
   if (!chrConfig) return;
   var j;
-  try { j = JSON.parse(dec.decode(await chrConfig.readValue())); } catch (e) { return; }
+  try { j = JSON.parse(dec.decode(await chrConfig.readValue())); }
+  catch (e) {
+    // ⚠⚠ CELLE-CI EST LA PLUS DANGEREUSE DES TROIS. En sortant en silence,
+    // la page GARDAIT les champs d'avant : ceux d'un AUTRE module, ou ceux
+    // qu'on venait de taper. On lisait les reglages d'un module en croyant
+    // lire les siens, et on sauvegardait par-dessus.
+    jsonRate('config', e);
+    var _zc = [document.getElementById('cfgMsg'), document.getElementById('canMsg')];
+    for (var _i = 0; _i < _zc.length; _i++) {
+      if (_zc[_i]) _zc[_i].innerHTML = "<div class='err'><b>Configuration illisible.</b> "
+        + "Le module a repondu un JSON invalide. <b>Les champs ci-dessous ne sont PAS "
+        + "les siens</b> — ne sauvegarde pas. Deconnecte, reconnecte, et regarde le "
+        + "journal de diagnostic en bas de page.</div>";
+    }
+    return;
+  }
 
   // AVANT de remplir les champs : le firmware declare ses capacites par les
   // cles de son propre JSON, et l'option ECUMASTER doit etre reactivee avant
@@ -5267,11 +5330,50 @@ async function submitConfig(ev) {
     ltcan: document.getElementById('ltcan').checked ? 1 : 0
   };
 
-  // Ecran divise du DLdisplay. ⚠ Le firmware REFUSE la configuration
-  // ENTIERE sur une valeur invalide -- pas seulement le champ fautif. On
-  // arrete donc ici, avec un message qui dit laquelle des deux valeurs
-  // bloque, plutot que de laisser echouer toute la sauvegarde sans raison
-  // visible.
+  // ⚠⚠ ON VERIFIE ICI, ET ON NOMME LE CHAMP. Le firmware refuse la
+  // configuration ENTIERE des qu'UN champ est invalide, et son refus ne dit
+  // pas lequel. La page renvoyait donc « Echec » sans plus, pour un champ
+  // vide ou une valeur hors plage -- on cherchait le defaut du cote du BLE
+  // alors qu'il etait dans une case de saisie.
+  //
+  // ⚠ UN CHAMP VIDE DONNE `NaN`, ET `JSON.stringify` L'ECRIT `null`. Le
+  // firmware refuse `null` comme il refuse une valeur hors plage. C'est le
+  // cas le plus frequent, et c'etait le plus muet.
+  var CHAMPS = [
+    ['mode',  'Protocole CAN',            function (v) { return typeof v === 'string' && v.length > 0; }],
+    ['cbr',   'Débit du bus CAN',         null],
+    ['hid',   'Identifiant Holley',       null],
+    ['ecid',  'Identifiant ECUMaster',    null],
+    ['scid',  'Déclencheur CAN (ID)',     null],
+    ['scby',  'Déclencheur CAN (octet)',  null],
+    ['scmk',  'Déclencheur CAN (masque)', function (v) { return v >= 1 && v <= 255; }],
+    ['sced',  'Déclencheur CAN (égal à)', null],
+    ['grate', 'Cadence GPS',              function (v) { return v === 100 || v === 50 || v === 40 || v === 33; }],
+    ['dynm',  'Modèle dynamique du GPS',  function (v) { return v === 4 || v === 6 || v === 7 || v === 8; }],
+    ['hecu',  'Modèle de Holley',         function (v) { return v === 0 || v === 1; }],
+    ['imuf',  'Filtre IMU',               null],
+    ['strig', 'Seuil de départ',          null],
+    ['pfft',  'Distance partielle',       null],
+    ['tzh',   'Fuseau (heures)',          function (v) { return v >= -23 && v <= 23; }],
+    ['tzm',   'Fuseau (minutes)',         function (v) { return v >= -59 && v <= 59; }]
+  ];
+  for (var ci = 0; ci < CHAMPS.length; ci++) {
+    var cle = CHAMPS[ci][0], nom = CHAMPS[ci][1], test = CHAMPS[ci][2];
+    var val = cfg[cle];
+    if (typeof val === 'number' && !isFinite(val)) {
+      msg.innerHTML = "<div class='err'><b>« " + nom + " » est vide ou illisible.</b> "
+        + "Le module refuserait TOUTE la configuration, pas seulement ce champ. "
+        + "Rien n’a été envoyé.</div>";
+      return false;
+    }
+    if (test && !test(val)) {
+      msg.innerHTML = "<div class='err'><b>« " + nom + " » : valeur refusée (" + val + ").</b> "
+        + "Le module refuserait TOUTE la configuration. Rien n’a été envoyé.</div>";
+      return false;
+    }
+  }
+
+  // Ecran divise du DLdisplay. Meme regle, meme raison.
   var errDsp = dspAjouterAConfig(cfg);
   if (errDsp) {
     msg.innerHTML = "<div class='err'>" + errDsp + "</div>";
