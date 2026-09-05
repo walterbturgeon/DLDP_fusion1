@@ -278,7 +278,7 @@ tr.chGlisse{opacity:.45;background:var(--line);}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v21</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v22</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -2906,6 +2906,9 @@ chOrdreCharger();
 // ne se declenche pas au doigt sur la plupart des tablettes -- la fonction
 // aurait l'air cassee sur l'appareil meme dont on se sert en piste.
 var chDragTr = null, chDragBody = null, chDragPid = null;
+var chDragY = null, chDragYDepart = 0, chDragParti = false;
+var CH_DRAG_DEPART = 8;      // px avant de bouger quoi que ce soit
+var CH_DRAG_SEUIL  = 0.55;   // > 0,5 : la course morte qui evite l'oscillation
 
 function chPoigneeDown(ev) {
   var h = ev.target.closest ? ev.target.closest('.chPoignee') : null;
@@ -2914,6 +2917,7 @@ function chPoigneeDown(ev) {
   if (!tr || !tr.parentNode) return;
   ev.preventDefault();
   chDragTr = tr; chDragBody = tr.parentNode; chDragPid = ev.pointerId;
+  chDragY = ev.clientY; chDragYDepart = ev.clientY; chDragParti = false;
   tr.classList.add('chGlisse');
   try { h.setPointerCapture(ev.pointerId); } catch (e) {}
 }
@@ -2921,24 +2925,60 @@ function chPoigneeDown(ev) {
 function chPoigneeMove(ev) {
   if (!chDragTr || ev.pointerId !== chDragPid) return;
   ev.preventDefault();
-  var y = ev.clientY;
-  var lignes = chDragBody.children;
-  for (var i = 0; i < lignes.length; i++) {
-    var tr = lignes[i];
-    if (tr === chDragTr) continue;
-    var r = tr.getBoundingClientRect();
-    if (y >= r.top && y <= r.bottom) {
-      if (y < r.top + r.height / 2) chDragBody.insertBefore(chDragTr, tr);
-      else                          chDragBody.insertBefore(chDragTr, tr.nextSibling);
-      break;
+
+  // ⚠ LISSAGE LEGER DE LA POSITION DU DOIGT. Un contact tactile tremble de
+  // quelques pixels a chaque rapport ; brut, il faisait sauter la ligne.
+  chDragY = (chDragY === null) ? ev.clientY : (chDragY * 0.35 + ev.clientY * 0.65);
+  var y = chDragY;
+
+  // ⚠ SEUIL DE DEPART. Sous 8 px de mouvement, on ne bouge rien : un simple
+  // appui ne doit pas deplacer une ligne.
+  if (!chDragParti) {
+    if (Math.abs(y - chDragYDepart) < CH_DRAG_DEPART) return;
+    chDragParti = true;
+  }
+
+  // ⚠⚠ ZONE MORTE, C'EST ELLE QUI ENLEVE L'ERRATISME. On comparait le doigt
+  // au MILIEU de la ligne voisine. Des l'echange, le doigt se retrouvait de
+  // l'autre cote de ce meme milieu et la ligne rebasculait : elle sautait
+  // d'avant en arriere sans que le doigt bouge. Le seuil est donc pousse a
+  // 55 % de la hauteur d'une ligne, ce qui laisse 10 % de course morte
+  // entre l'aller et le retour.
+  // ⚠ UN SEUL ECHANGE PAR EVENEMENT. Les rapports arrivent assez souvent
+  // pour suivre un geste rapide, et un seul pas a la fois reste lisible.
+  var prec = chDragTr.previousElementSibling;
+  if (prec) {
+    var rp = prec.getBoundingClientRect();
+    if (y < rp.bottom - rp.height * CH_DRAG_SEUIL) {
+      chDragBody.insertBefore(chDragTr, prec);
+      return chDragDefiler(y);
     }
   }
-  // Defiler quand on approche d'un bord : 38 lignes ne tiennent pas a
-  // l'ecran, et sans cela on ne peut pas monter une ligne du bas jusqu'en
-  // haut du tableau.
+  var suiv = chDragTr.nextElementSibling;
+  if (suiv) {
+    var rs = suiv.getBoundingClientRect();
+    if (y > rs.top + rs.height * CH_DRAG_SEUIL) {
+      chDragBody.insertBefore(chDragTr, suiv.nextSibling);
+      return chDragDefiler(y);
+    }
+  }
+  chDragDefiler(y);
+}
+
+// Defiler quand on approche d'un bord : 38 lignes ne tiennent pas a
+// l'ecran, et sans cela on ne peut pas monter une ligne du bas jusqu'en
+// haut du tableau.
+function chDragDefiler(y) {
   var H = window.innerHeight;
-  if (y < 70)      window.scrollBy(0, -14);
-  else if (y > H - 70) window.scrollBy(0, 14);
+  // ⚠⚠ RIEN SI LE DOIGT EST HORS DE LA FENETRE. Une position aberrante
+  // faisait defiler la page a chaque rapport : les lignes couraient sous le
+  // doigt et s'echangeaient en rafale, sans que le doigt bouge. C'est ce
+  // qui rendait le geste erratique.
+  if (y < 0 || y > H) return;
+  // Bande etroite et pas court : de quoi atteindre le haut du tableau sans
+  // que la liste s'emballe des qu'on approche d'un bord.
+  if (y < 48)          window.scrollBy(0, -7);
+  else if (y > H - 48) window.scrollBy(0, 7);
 }
 
 function chPoigneeUp(ev) {
@@ -2949,7 +2989,12 @@ function chPoigneeUp(ev) {
     var v = parseInt(lignes[i].getAttribute('data-ch'), 10);
     if (!isNaN(v)) ordre.push(v);
   }
+  var parti = chDragParti;
   chDragTr = null; chDragBody = null; chDragPid = null;
+  chDragY = null; chDragParti = false;
+  // ⚠ UN SIMPLE APPUI N'EST PAS UN DEPLACEMENT. Sans ce test, toucher une
+  // poignee sans bouger reecrirait l'ordre pour rien.
+  if (!parti) { rlLiveCanRendre(); return; }
 
   // ⚠ LE TABLEAU GLISSE NE MONTRE PEUT-ETRE PAS TOUS LES CANAUX. Celui du
   // live n'affiche que ceux deja recus. On ne remplace donc pas l'ordre
@@ -2976,6 +3021,11 @@ document.addEventListener('pointerdown', chPoigneeDown, { passive: false });
 document.addEventListener('pointermove', chPoigneeMove, { passive: false });
 document.addEventListener('pointerup', chPoigneeUp);
 document.addEventListener('pointercancel', chPoigneeUp);
+// ⚠ FILET. Si le navigateur reprend le pointeur -- un defilement qu'il
+// decide d'imposer, une fenetre qui perd le focus -- ni `pointerup` ni
+// `pointercancel` n'arrivent toujours. Sans ce filet, `chDragTr` resterait
+// pose et le tableau se figerait pour de bon, sans un mot a l'ecran.
+document.addEventListener('lostpointercapture', chPoigneeUp);
 
 const LIMIT_FLAGS = [
   "RPM Limit", "MAP Limit", "Speed Limit", "Maximum Ignition",
@@ -3657,6 +3707,9 @@ function rlRendre() {
   // d'inventer une reference.
   var tb = document.getElementById('relaisTbody');
   var bloc = document.getElementById('relaisCanaux');
+  // ⚠ MEME REGLE QUE POUR LE LIVE : on ne reconstruit pas le tableau
+  // pendant qu'un doigt tient une ligne, sinon le geste est perdu.
+  if (chDragTr) return;
   if (tb && lap.vals && lap.vals.length === CHANNELS.length) {
     var lignes = '';
     for (var q = 0; q < chOrdre.length; q++) {
@@ -3994,6 +4047,12 @@ async function rlLiveBascule() {
 // tirets ferait croire a une panne pendant les deux premieres secondes, le
 // temps que la rotation ait fait un tour complet.
 function rlLiveCanRendre() {
+  // ⚠⚠ AUCUN RE-RENDU PENDANT QU'ON TIENT UNE LIGNE. Les paquets arrivent
+  // a 5 Hz et cette fonction reconstruit tout le tableau : la ligne
+  // deplacee repartait a sa place cinq fois par seconde, et le
+  // relachement lisait un tableau deja remis a plat. On voyait la ligne
+  // bouger, puis revenir. Le tableau reprend sa vie a la fin du geste.
+  if (chDragTr) return;
   var tb = document.getElementById('liveCanTbody');
   var bloc = document.getElementById('liveCanaux');
   if (!tb) return;
