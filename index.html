@@ -193,6 +193,24 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
 @media (prefers-reduced-motion:no-preference){
   body,.card,.tb,select,input{transition:background-color .15s,color .15s,border-color .15s;}
 }
+
+/* [v21] EN PORTRAIT, LA CARTE PASSE AVANT LE TABLEAU DES CANAUX CAN.
+   Demande de l'utilisateur : en vertical, 38 lignes de canaux repoussent
+   la trajectoire hors de l'ecran, sur l'ecran meme qu'on regarde en
+   roulant. En paysage l'ordre d'origine reste. */
+@media (orientation:portrait){
+  #relaisBloc{order:1 !important;}
+  #liveCanaux{order:2 !important;}
+}
+
+/* [v21] LA POIGNEE DE REORDONNANCEMENT.
+   ⚠ `touch-action:none` est OBLIGATOIRE : sans lui, le navigateur prend le
+   glissement pour un defilement et la ligne ne bouge jamais sur tablette,
+   l'appareil meme dont on se sert en piste. */
+.chPoignee{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+  opacity:.45;padding:5px 8px 5px 0;line-height:1;font-size:15px;}
+.chPoignee:active{cursor:grabbing;opacity:.9;}
+tr.chGlisse{opacity:.45;background:var(--line);}
 </style>
 </head>
 <body>
@@ -260,7 +278,7 @@ select:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible{
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v20</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache.">page <b>fusion v21</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -405,9 +423,17 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
      ⚠ Il reste masque tant qu'aucun paquet live n'est arrive : un panneau
      de zeros ferait croire a une liaison morte alors que le live est
      simplement eteint. -->
-<div id="liveBloc" style="margin-top:14px;display:none;">
+<!-- [v21] ⚠ ZONE FLEX : L'ORDRE D'AFFICHAGE CHANGE AVEC L'ORIENTATION.
+     En portrait, la carte passe AVANT le tableau des canaux CAN -- sinon
+     il faut faire defiler 38 lignes pour voir la trajectoire, sur l'ecran
+     meme ou l'on regarde en roulant. En paysage l'ordre d'origine reste.
+     ⚠ On change `order`, PAS la position dans le DOM : deplacer les blocs
+     casserait les references par id du reste de la page. -->
+<div id="zoneLive" style="display:flex;flex-direction:column;">
+<div id="liveBloc" style="margin-top:14px;display:none;order:0;">
   <div class="grid" id="liveGrid"></div>
   <p class="small" id="liveNote" style="margin:10px 0 0;opacity:.75;"></p>
+</div>
 
   <!-- [v19] LES CANAUX CAN DU LIVE.
        ⚠ Le module envoie 4 canaux par paquet et tourne sur les 38. A 5 Hz,
@@ -415,11 +441,17 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
        ci-dessous sont ceux des ECHANTILLONS RECUS, pas ceux du tour : un
        pic entre deux envois n'est pas vu. L'avertissement sous le tableau
        le dit, et il ne doit pas etre retire. -->
-  <div id="liveCanaux" style="margin-top:16px;display:none;">
-    <h2 style="font-size:1em;">Canaux CAN en direct</h2>
+  <div id="liveCanaux" style="margin-top:16px;display:none;order:1;">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+      <h2 style="font-size:1em;margin-right:auto;">Canaux CAN en direct</h2>
+      <span class="small" style="opacity:.7;">&#9776; tiens et fais glisser pour changer l'ordre</span>
+      <button type="button" class="btn btn2" style="margin:0;padding:4px 10px;font-size:13px;width:auto;"
+              onclick="chOrdreRaz()">Ordre d'origine</button>
+    </div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table style="width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap;">
         <thead><tr>
+          <th style="width:1px;"></th>
           <th style="text-align:left;padding:6px 10px 6px 0;">Canal</th>
           <th style="text-align:right;padding:6px 10px;">Valeur</th>
           <th style="text-align:right;padding:6px 10px;">Min vu</th>
@@ -437,8 +469,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
       vu. La vitesse et la position, elles, sont dans <b>chaque</b> paquet.
     </p>
   </div>
-</div>
-<div id="relaisBloc" style="margin-top:14px;display:none;">
+<div id="relaisBloc" style="margin-top:14px;display:none;order:2;">
   <div class="grid" id="relaisGrid"></div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;">
     <label class="small" style="display:flex;align-items:center;gap:6px;margin:0;font-weight:normal;">
@@ -468,6 +499,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table style="width:100%;border-collapse:collapse;font-size:14px;white-space:nowrap;">
         <thead><tr>
+          <th style="width:1px;"></th>
           <th style="text-align:left;padding:6px 10px 6px 0;">Canal</th>
           <th style="text-align:right;padding:6px 10px;">Min</th>
           <th style="text-align:right;padding:6px 10px;">Max</th>
@@ -479,6 +511,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
       </table>
     </div>
   </div>
+</div>
 </div>
 </div>
 
@@ -2806,6 +2839,144 @@ const CHANNELS = [
   { name: "Knock Cyl 8",        unit: "",     txScale: 1 },
 ];
 
+// =====================================================================
+// [v21] L'ORDRE D'AFFICHAGE DES CANAUX, CHOISI PAR L'UTILISATEUR
+// =====================================================================
+// ⚠⚠ CECI NE TOUCHE JAMAIS `CHANNELS`. L'ordre de CHANNELS fait partie du
+// PROTOCOLE : le resume de tour arrive en min/max/moy dans cet ordre exact,
+// sans nom. Deplacer une ligne de CHANNELS decalerait silencieusement
+// toutes les valeurs. `chOrdre` est une liste d'INDICES vers CHANNELS,
+// utilisee pour l'AFFICHAGE seulement.
+//
+// ⚠ L'ordre est garde dans le navigateur : sans cela il faudrait tout
+// reclasser a chaque reconnexion.
+var CH_ORDRE_CLE = 'dlgChOrdre';
+var chOrdre = null;
+
+function chOrdreDefaut() {
+  var a = [];
+  for (var i = 0; i < CHANNELS.length; i++) a.push(i);
+  return a;
+}
+
+// ⚠ VALIDATION STRICTE. Un cache abime ou une liste de canaux qui change
+// de longueur ferait DISPARAITRE des canaux, ou en afficherait deux fois
+// le meme -- et rien ne le dirait a l'ecran. Au moindre doute, on repart
+// de l'ordre d'origine.
+function chOrdreValide(a) {
+  if (!Array.isArray(a) || a.length !== CHANNELS.length) return false;
+  var vus = new Array(CHANNELS.length).fill(false);
+  for (var i = 0; i < a.length; i++) {
+    var v = a[i];
+    if (typeof v !== 'number' || v < 0 || v >= CHANNELS.length || vus[v]) return false;
+    vus[v] = true;
+  }
+  return true;
+}
+
+function chOrdreCharger() {
+  chOrdre = chOrdreDefaut();
+  try {
+    var s = localStorage.getItem(CH_ORDRE_CLE);
+    if (!s) return;
+    var a = JSON.parse(s);
+    if (chOrdreValide(a)) chOrdre = a;
+    else localStorage.removeItem(CH_ORDRE_CLE);
+  } catch (e) { /* stockage refuse ou JSON casse : l'ordre d'origine sert */ }
+}
+
+function chOrdreSauver() {
+  try { localStorage.setItem(CH_ORDRE_CLE, JSON.stringify(chOrdre)); }
+  catch (e) { /* mode prive : l'ordre tient pour la session, sans plus */ }
+}
+
+function chOrdreRaz() {
+  chOrdre = chOrdreDefaut();
+  chOrdreSauver();
+  rlLiveCanRendre();
+  if (rlLapVu) rlRendre();
+}
+
+chOrdreCharger();
+
+// ---------------------------------------------------------------------
+// Glisser une ligne par sa poignee
+// ---------------------------------------------------------------------
+// ⚠ POINTER EVENTS, PAS LE GLISSER-DEPOSER HTML5. Le glisser-deposer natif
+// ne se declenche pas au doigt sur la plupart des tablettes -- la fonction
+// aurait l'air cassee sur l'appareil meme dont on se sert en piste.
+var chDragTr = null, chDragBody = null, chDragPid = null;
+
+function chPoigneeDown(ev) {
+  var h = ev.target.closest ? ev.target.closest('.chPoignee') : null;
+  if (!h) return;
+  var tr = h.closest('tr');
+  if (!tr || !tr.parentNode) return;
+  ev.preventDefault();
+  chDragTr = tr; chDragBody = tr.parentNode; chDragPid = ev.pointerId;
+  tr.classList.add('chGlisse');
+  try { h.setPointerCapture(ev.pointerId); } catch (e) {}
+}
+
+function chPoigneeMove(ev) {
+  if (!chDragTr || ev.pointerId !== chDragPid) return;
+  ev.preventDefault();
+  var y = ev.clientY;
+  var lignes = chDragBody.children;
+  for (var i = 0; i < lignes.length; i++) {
+    var tr = lignes[i];
+    if (tr === chDragTr) continue;
+    var r = tr.getBoundingClientRect();
+    if (y >= r.top && y <= r.bottom) {
+      if (y < r.top + r.height / 2) chDragBody.insertBefore(chDragTr, tr);
+      else                          chDragBody.insertBefore(chDragTr, tr.nextSibling);
+      break;
+    }
+  }
+  // Defiler quand on approche d'un bord : 38 lignes ne tiennent pas a
+  // l'ecran, et sans cela on ne peut pas monter une ligne du bas jusqu'en
+  // haut du tableau.
+  var H = window.innerHeight;
+  if (y < 70)      window.scrollBy(0, -14);
+  else if (y > H - 70) window.scrollBy(0, 14);
+}
+
+function chPoigneeUp(ev) {
+  if (!chDragTr) return;
+  chDragTr.classList.remove('chGlisse');
+  var lignes = chDragBody.children, ordre = [];
+  for (var i = 0; i < lignes.length; i++) {
+    var v = parseInt(lignes[i].getAttribute('data-ch'), 10);
+    if (!isNaN(v)) ordre.push(v);
+  }
+  chDragTr = null; chDragBody = null; chDragPid = null;
+
+  // ⚠ LE TABLEAU GLISSE NE MONTRE PEUT-ETRE PAS TOUS LES CANAUX. Celui du
+  // live n'affiche que ceux deja recus. On ne remplace donc pas l'ordre
+  // complet : on REINSERE les canaux deplaces dans l'ordre observe, et les
+  // absents gardent leur place relative. Sans ca, ranger le tableau du
+  // live effacerait l'ordre des canaux pas encore arrives.
+  if (!ordre.length) return;
+  var presents = {}, k;
+  for (k = 0; k < ordre.length; k++) presents[ordre[k]] = true;
+  var neuf = [], j = 0;
+  for (k = 0; k < chOrdre.length; k++) {
+    if (presents[chOrdre[k]]) neuf.push(ordre[j++]);
+    else                      neuf.push(chOrdre[k]);
+  }
+  if (!chOrdreValide(neuf)) return;   // au moindre doute, on ne touche a rien
+  chOrdre = neuf;
+  chOrdreSauver();
+  rlLiveCanRendre();
+  var tb = document.getElementById('relaisTbody');
+  if (tb && tb.children.length && rlLapVu) rlRendre();
+}
+
+document.addEventListener('pointerdown', chPoigneeDown, { passive: false });
+document.addEventListener('pointermove', chPoigneeMove, { passive: false });
+document.addEventListener('pointerup', chPoigneeUp);
+document.addEventListener('pointercancel', chPoigneeUp);
+
 const LIMIT_FLAGS = [
   "RPM Limit", "MAP Limit", "Speed Limit", "Maximum Ignition",
   "Anti-Lag Ignition Cut", "High Voltage Supply Limit", "Overrun", "Traction Limit",
@@ -3488,7 +3659,8 @@ function rlRendre() {
   var bloc = document.getElementById('relaisCanaux');
   if (tb && lap.vals && lap.vals.length === CHANNELS.length) {
     var lignes = '';
-    for (var k = 0; k < CHANNELS.length; k++) {
+    for (var q = 0; q < chOrdre.length; q++) {
+      var k = chOrdre[q];
       var ch = CHANNELS[k], v = lap.vals[k];
       var dec = ch.txScale >= 100 ? 3 : 1;
       var ecart = '-';
@@ -3496,7 +3668,8 @@ function rlRendre() {
         var dd = (v.avg - prec.vals[k].avg) / ch.txScale;
         ecart = (dd >= 0 ? '+' : '') + dd.toFixed(dec);
       }
-      lignes += '<tr>'
+      lignes += '<tr data-ch="' + k + '">'
+        + '<td class="chPoignee" title="Tiens et fais glisser pour changer l\'ordre">&#9776;</td>'
         + '<td style="padding:5px 10px 5px 0;">' + ch.name + '</td>'
         + '<td style="text-align:right;padding:5px 10px;">' + (v.min / ch.txScale).toFixed(dec) + '</td>'
         + '<td style="text-align:right;padding:5px 10px;">' + (v.max / ch.txScale).toFixed(dec) + '</td>'
@@ -3825,12 +3998,14 @@ function rlLiveCanRendre() {
   var bloc = document.getElementById('liveCanaux');
   if (!tb) return;
   var lignes = '', vus = 0;
-  for (var i = 0; i < CHANNELS.length; i++) {
+  for (var q = 0; q < chOrdre.length; q++) {
+    var i = chOrdre[q];
     var c = liveCan[i];
     if (!c) continue;
     vus++;
     var ch = CHANNELS[i], dec = ch.txScale >= 100 ? 3 : (ch.txScale >= 10 ? 1 : 0);
-    lignes += '<tr>'
+    lignes += '<tr data-ch="' + i + '">'
+      + '<td class="chPoignee" title="Tiens et fais glisser pour changer l\'ordre">&#9776;</td>'
       + '<td style="padding:5px 10px 5px 0;">' + ch.name + '</td>'
       + '<td style="text-align:right;padding:5px 10px;"><b>' + c.der.toFixed(dec) + '</b></td>'
       + '<td style="text-align:right;padding:5px 10px;">' + c.min.toFixed(dec) + '</td>'
