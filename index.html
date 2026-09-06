@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v39</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v40</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -4441,7 +4441,14 @@ var liveDebutMs = 0;
 // le temps ecoule. Ce ne sont pas des pertes -- personne n'emettait.
 var liveSilences = 0;
 // La cadence que le firmware annonce (LIVE_PERIODE_MS = 200 ms, 5 Hz).
-var LIVE_PERIODE_MS_ATTENDUE = 200;
+// ⚠⚠ CETTE VALEUR DOIT SUIVRE `LIVE_PERIODE_MS` DU FIRMWARE, exactement.
+// Elle sert a distinguer un SILENCE d'une PERTE : un trou de N paquets ne
+// compte comme perte que si le temps ecoule pouvait vraiment les porter.
+// Une page restee a 200 ms devant un module a 333 ms croirait que le module
+// emet plus vite qu'il ne le fait, et compterait des pertes imaginaires --
+// sur le chiffre meme qu'on regarde en piste pour juger la portee.
+// 200 ms = 5 Hz jusqu'a DLD-FUS.1.19 ; 333 ms = 3 Hz depuis 1.20.
+var LIVE_PERIODE_MS_ATTENDUE = 333;   // 3 Hz, cf. DLD-FUS.1.20
 // ⚠ Le module peut emettre le live sans que CETTE page l'ait demande : une
 // autre page, la touche `y` du banc, ou un live reste allume. Les compteurs
 // couvrent alors une periode qu'on ne maitrise pas, et il faut le DIRE.
