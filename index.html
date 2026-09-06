@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v41</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v42</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -1932,7 +1932,32 @@ showGhTokenState();   // etat du jeton des le chargement (import QR inclus)
 // =====================================================
 // Etat (lecture seule, rafraichie toutes les 3s pendant la connexion)
 // =====================================================
+// =====================================================================
+// UNE SEULE LECTURE D'ETAT A LA FOIS
+// =====================================================================
+// ⚠⚠ `setInterval(refreshState, 3000)` RELANCE SANS ATTENDRE LA PRECEDENTE.
+// Sur un lien BLE qui traine -- et il traine des que le relais se
+// reconnecte -- les lectures se marchent dessus, et le navigateur repond
+// « GATT operation already in progress ». Compte dans le journal du
+// 6 septembre 2026 : 150 fois de suite.
+//
+// ⚠ LE TOUR SAUTE, IL NE S'EMPILE PAS. La lecture suivante arrive dans 3 s
+// et l'etat n'est pas une mesure qu'on perd -- c'est une photo qu'on
+// reprend. Mettre les lectures en file les ferait au contraire s'accumuler
+// derriere le lien lent, et le retard grandirait sans fin.
+var etatEnCours = false;
+
 async function refreshState() {
+  if (etatEnCours) return;
+  etatEnCours = true;
+  // ⚠ `finally` OBLIGATOIRE. Une exception qui laisserait le drapeau leve
+  // arreterait TOUTE lecture d'etat pour le reste de la seance, en silence
+  // -- l'ecran se figerait sur sa derniere valeur sans que rien ne le dise.
+  try { await refreshStateCorps(); }
+  finally { etatEnCours = false; }
+}
+
+async function refreshStateCorps() {
   if (!chrState) return;
   var j;
   try { j = JSON.parse(dec.decode(await chrState.readValue())); }
@@ -4453,6 +4478,10 @@ var LIVE_PERIODE_MS_ATTENDUE = 333;   // 3 Hz, cf. DLD-FUS.1.20
 // autre page, la touche `y` du banc, ou un live reste allume. Les compteurs
 // couvrent alors une periode qu'on ne maitrise pas, et il faut le DIRE.
 var liveDemandeParLaPage = false;
+// ⚠ INSTANT DU DERNIER ORDRE ENVOYE PAR CETTE PAGE. Il arme la fenetre de
+// garde qui empeche les paquets encore EN VOL de defaire l'ordre qu'on vient
+// de donner. Voir la garde dans rlDecodeLive().
+var liveOrdreMs = 0;
 var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
 
 // [v19] LES CANAUX CAN RECUS EN DIRECT
@@ -4713,6 +4742,10 @@ async function rlLiveBascule() {
     // des paquets, un « inverse » finit par desynchroniser le bouton et le
     // module. Un ordre qui porte l'etat est idempotent.
     await rlCmdChar.writeValue(new Uint8Array([0x07, veut ? 1 : 0]));
+    // ⚠ ON ARME LA GARDE DES QUE L'ORDRE EST PARTI. Sans elle, les paquets
+    // encore en vol defont l'ordre qu'on vient de donner -- voir
+    // rlDecodeLive().
+    liveOrdreMs = Date.now();
     liveOn = veut;
     if (veut) {
       liveSeqPrec = null; liveRecus = 0; liveManques = 0;
@@ -4860,7 +4893,19 @@ function rlDecodeLive(b) {
   //
   // Un paquet qui arrive EST la preuve que le live tourne. On aligne donc
   // le bouton sur ce fait, et l'appui suivant fait ce qu'il annonce.
-  if (!liveOn) {
+  //
+  // ⚠⚠ MAIS ON NE SE REALIGNE PAS SUR LES PAQUETS ENCORE EN VOL. Apres un
+  // ordre d'arret, le module continue d'emettre quelques centaines de
+  // millisecondes -- le temps que le paquet traverse l'ESP-NOW, le LoRa et
+  // le BLE. Ces paquets-la remettaient le bouton sur « en marche », et
+  // l'appui suivant renvoyait donc « eteins » : ON NE POUVAIT PLUS RALLUMER
+  // LE LIVE. Vu trois fois de suite dans le journal du 6 septembre 2026, a
+  // une seconde d'intervalle.
+  //
+  // ⚠ 2 s ET PAS 500 ms. Le pont repete ses trames et la page se reconnecte
+  // entre les tours : une garde trop courte laisserait repasser exactement
+  // le defaut qu'elle ferme.
+  if (!liveOn && (Date.now() - liveOrdreMs) > 2000) {
     liveOn = true;
     rlLiveMaj();
     diagNoter('Le module emet deja le live : le bouton est aligne sur la realite.');
