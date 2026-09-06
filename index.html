@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v40</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v41</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -5149,13 +5149,24 @@ function appliquerCapacites(j) {
   }
   appAfficher();
 
-  // ⚠ ON REIMPOSE L'UNITE A CHAQUE LECTURE DE CONFIGURATION. Le module a
-  // pu etre reflashe, ou regle par un autre telephone : sans ce rappel,
-  // son ecran resterait dans une unite que la page n'affiche plus -- et
-  // deux appareils du meme ensemble affichant l'un des km/h et l'autre
-  // des mph, c'est la garantie qu'on compare un jour deux nombres qui ne
-  // sont pas dans la meme unite.
-  uniEnvoyer();
+  // ⚠⚠ `uniEnvoyer()` EST RETIRE : CETTE FONCTION N'A JAMAIS EXISTE.
+  // L'appel etait la, seul, sans aucune definition nulle part -- verifie
+  // sur TOUT l'historique du depot le 6 septembre 2026. Le commentaire qui
+  // l'accompagnait decrivait une intention jamais realisee : « on reimpose
+  // l'unite au module a chaque lecture de configuration ».
+  //
+  // Consequence, et elle etait lourde : cette ligne vit dans
+  // `appliquerCapacites()`, appelee par `refreshConfig()` des qu'on se
+  // connecte a la VOITURE. Toute connexion a la voiture levait donc
+  // « uniEnvoyer is not defined » et echouait. Le defaut restait invisible
+  // tant qu'on ne se connectait qu'au RELAIS, qui ne passe pas par ici.
+  //
+  // ⚠ ET IL N'Y A RIEN A ENVOYER. Le firmware n'accepte que sept commandes
+  // -- ota, calib, dumpall, dumpble, reset, sim, reboot -- et AUCUNE ne
+  // regle l'unite. L'ecran du module ecrit ses vitesses en km/h en dur.
+  // L'unite est un choix d'affichage de CETTE page, et de rien d'autre.
+  // Ecrire une fonction pour envoyer un ordre que personne n'ecoute aurait
+  // seulement deplace le defaut.
 
   // Le mode ECUMaster se deduit de la presence de son ID de base. Le laisser
   // selectionnable sur un firmware qui l'ignore ferait echouer la sauvegarde
@@ -5233,7 +5244,30 @@ async function refreshConfig() {
   // AVANT de remplir les champs : le firmware declare ses capacites par les
   // cles de son propre JSON, et l'option ECUMASTER doit etre reactivee avant
   // qu'on tente de la selectionner ci-dessous.
-  appliquerCapacites(j);
+  //
+  // ⚠⚠ SOUS FILET, ET CE FILET A ETE PAYE CHER. Un seul appel a une fonction
+  // inexistante -- `uniEnvoyer()`, jamais definie -- levait une exception ici
+  // et rendait TOUTE connexion a la voiture impossible. La page affichait
+  // « Echec : uniEnvoyer is not defined » et s'arretait la : ni version, ni
+  // reglages, ni metier. Un defaut d'affichage tuait la connexion entiere.
+  //
+  // ⚠ ON CONTINUE APRES L'ERREUR, ET ON LA DIT. Les capacites ne servent
+  // qu'a montrer ou masquer des reglages ; le reste de la lecture -- la
+  // version, le metier, les champs -- vaut mieux qu'un ecran vide. Mais le
+  // journal de diagnostic garde la trace, sinon on masquerait un vrai defaut
+  // derriere une page qui a l'air de marcher.
+  try {
+    appliquerCapacites(j);
+  } catch (e) {
+    diagNoter('⚠ appliquerCapacites a echoue : ' + (e && e.message ? e.message : e));
+    var _zk = [document.getElementById('cfgMsg'), document.getElementById('canMsg')];
+    for (var _k = 0; _k < _zk.length; _k++) {
+      if (_zk[_k]) _zk[_k].innerHTML = "<div class='err'><b>Lecture partielle des capacités.</b> "
+        + (e && e.message ? e.message : e)
+        + " — les réglages ci-dessous sont lus, mais certains champs peuvent être "
+        + "montrés à tort. Regarde le journal de diagnostic en bas de page.</div>";
+    }
+  }
 
   // ⚠ AVANT le retour anticipe du DLAP : les deux appareils envoient "fw",
   // et on veut la version affichee dans les deux cas. Place apres le
