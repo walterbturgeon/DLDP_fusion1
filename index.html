@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v42</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v43</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3543,6 +3543,24 @@ async function relaisConnecter() {
     rlQuitte = false;
     rlDevice.addEventListener('gattserverdisconnected', function () {
       rlCmdChar = null;
+      // ⚠⚠ L'ETAT DU LIVE DEVIENT INCONNU, ON LE TRAITE COMME ETEINT.
+      // `liveOn` n'etait remis a false NULLE PART : ni ici, ni a la
+      // reconnexion. Or le module peut avoir redemarre pendant la coupure --
+      // et son live, lui, repart TOUJOURS eteint. La page gardait donc
+      // « en marche » sur un module eteint, et l'appui suivant envoyait
+      // « eteins » a un module deja eteint. Il ne se passait rien, et il
+      // fallait RECHARGER la page pour s'en sortir -- c'est exactement le
+      // symptome rapporte le 6 septembre 2026.
+      //
+      // ⚠ POURQUOI « ETEINT » ET PAS « INCHANGE » : parce que l'appui
+      // suivant doit ALLUMER. C'est l'action utile quand on ne sait pas.
+      // Et si le module emettait deja, le realignement de la v42 remet le
+      // bouton a jour des le premier paquet recu -- on ne perd rien.
+      if (liveOn) {
+        liveOn = false;
+        rlLiveMaj();
+        diagNoter('Relais deconnecte : etat du live inconnu, bouton remis a « arrete ».');
+      }
       // ⚠ ON NE BAISSE PAS LE DRAPEAU ICI. Le relais coupe son BLE ENTRE
       // LES TOURS, volontairement : une coupure est normale et la page se
       // rebranche seule. Repasser en DRAGLOGICS a chaque coupure ferait
@@ -3558,10 +3576,29 @@ async function relaisConnecter() {
   }
 }
 
+// ⚠⚠ LA CARACTERISTIQUE DEJA ECOUTEE. Sans elle, on ne peut pas retirer
+// l'ecouteur precedent -- voir rlAttacher().
+var rlDataChar = null;
+
 async function rlAttacher(server) {
   var svc = await server.getPrimaryService(RL_SVC);
   var ch  = await svc.getCharacteristic(RL_DATA);
   await ch.startNotifications();
+  // ⚠⚠ ON RETIRE L'ECOUTEUR PRECEDENT AVANT D'EN POSER UN. Cette fonction
+  // est appelee A CHAQUE RECONNEXION, et la reconnexion automatique tourne
+  // toutes les 2 s -- le relais coupe son BLE entre les tours, c'est voulu.
+  // Sans ce retrait, les ecouteurs s'EMPILAIENT : apres dix reconnexions,
+  // chaque paquet etait traite dix fois. Les compteurs de paquets recus
+  // gonflaient d'autant, et la trace du live grossissait dix fois plus vite
+  // -- donc le plafond de 3000 points tombait dix fois plus tot, et le
+  // dessin s'alourdissait sur l'appareil meme dont on a besoin en piste.
+  //
+  // ⚠ `removeEventListener` sur une caracteristique jamais ecoutee ne fait
+  // rien et ne leve rien : l'appel est sur au premier passage.
+  if (rlDataChar) {
+    try { rlDataChar.removeEventListener('characteristicvaluechanged', rlNotif); } catch (e) {}
+  }
+  rlDataChar = ch;
   ch.addEventListener('characteristicvaluechanged', rlNotif);
   rlCmdChar = await svc.getCharacteristic(RL_CMD);
 
@@ -3642,6 +3679,9 @@ function relaisDeconnecter() {
   } catch (e) {}
   rlCmdChar = null;
   rlConnecte = false;   // l'affichage revient au metier declare par la voiture
+  // ⚠ MEME RAISON QUE PLUS HAUT : sans relais, on ne sait plus si le module
+  // emet. On repart de « arrete », pour que l'appui suivant allume.
+  if (liveOn) { liveOn = false; rlLiveMaj(); }
   rlBoutons(false);
   var erd = document.getElementById('rlVer');
   if (erd) erd.textContent = 'relais : non connecté';
