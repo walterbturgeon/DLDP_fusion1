@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v44</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v45</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -3356,6 +3356,16 @@ function diagTexte() {
   // avait deux causes tres differentes -- aucun paquet, ou des paquets sans
   // fix -- et le meme message a l'ecran. Ces deux lignes les separent d'un
   // coup d'oeil, avant meme de lire le journal.
+  // ⚠ LE SIGNAL EN TETE, AVANT LE JOURNAL. C'est le chiffre qu'on cherche
+  // en premier apres un essai de portee.
+  if (liveRssiN) {
+    L.push('signal CAR->RELAIS : dernier ' + liveRssi + ' dBm'
+         + '   min ' + liveRssiMin + '   max ' + liveRssiMax
+         + '   moyenne ' + Math.round(liveRssiSomme / liveRssiN) + ' dBm'
+         + '   (' + liveRssiN + ' mesures)');
+  } else {
+    L.push('signal CAR->RELAIS : inconnu — le relais ne le transmet pas (LPU.0.18 ou anterieur)');
+  }
   L.push('paquets AVEC fix : ' + liveAvecFix);
   L.push('paquets SANS fix : ' + liveSansFix
        + (liveSansFix && !liveAvecFix ? '   <<< les paquets ARRIVENT mais aucun ne porte de fix' : ''));
@@ -3386,9 +3396,16 @@ function diagTexte() {
   L.push('');
   L.push('--- TRACE LIVE (metres depuis le premier point, km/h) ---');
   if (liveOrigine) L.push('origine : ' + liveOrigine.lat.toFixed(6) + ', ' + liveOrigine.lon.toFixed(6));
-  L.push('dx;dy;kmh;saut');
+  // ⚠⚠ [v45] DEUX COLONNES DE PLUS : rssi ET snr, PAR POINT. Sans elles,
+  // le fichier dit ou le lien casse mais jamais comment le signal se
+  // degrade en chemin -- et ces deux courbes ne se ressemblent pas : une
+  // antenne mal placee s'effondre d'un coup, une vraie limite de portee
+  // decroit regulierement. Un relais plus ancien laisse ces colonnes vides.
+  L.push('dx;dy;kmh;saut;rssi;snr');
   liveTrace.forEach(function (p) {
-    L.push(p.dx.toFixed(1) + ';' + p.dy.toFixed(1) + ';' + p.kmh.toFixed(1) + ';' + (p.saut ? 1 : 0));
+    L.push(p.dx.toFixed(1) + ';' + p.dy.toFixed(1) + ';' + p.kmh.toFixed(1) + ';' + (p.saut ? 1 : 0)
+         + ';' + (p.rssi == null ? '' : p.rssi)
+         + ';' + (p.snr  == null ? '' : p.snr));
   });
   return L.join('\n');
 }
@@ -4546,6 +4563,13 @@ var liveOrdreMs = 0;
 var liveSansFix = 0;      // paquets recus dont l'octet de validite est a 0
 var liveAvecFix = 0;      // paquets recus avec une position utilisable
 
+// [v45] LE NIVEAU DE SIGNAL DU SAUT CAR -> RELAIS, ajoute par le relais a la
+// fin de chaque paquet live depuis LPU.0.19.
+// ⚠ `null` tant qu'aucun paquet ne le porte : un relais plus ancien n'en
+// envoie pas, et afficher 0 dBm laisserait croire a un signal parfait.
+var liveRssi = null, liveSnr = null;
+var liveRssiMin = 999, liveRssiMax = -999, liveRssiSomme = 0, liveRssiN = 0;
+
 // L'etat complet de la page en une ligne. Ecrit aux moments qui comptent :
 // a chaque appui du bouton, a chaque connexion, au premier paquet.
 function liveEtatTexte() {
@@ -4843,6 +4867,12 @@ async function rlLiveBascule() {
       // melangerait deux essais dans un seul chiffre, et « 300 sans fix »
       // ne dirait plus de quel essai il parle.
       liveSansFix = 0; liveAvecFix = 0;
+      // ⚠ LES BORNES DU SIGNAL REPARTENT AVEC LE FLUX. Un minimum garde
+      // d'un essai precedent ferait croire a un decrochage qui n'a pas eu
+      // lieu dans celui-ci -- et c'est justement le minimum qu'on regarde
+      // apres un essai de portee.
+      liveRssi = null; liveSnr = null;
+      liveRssiMin = 999; liveRssiMax = -999; liveRssiSomme = 0; liveRssiN = 0;
       // ⚠ ON BASCULE SUR L'ONGLET TOUT DE SUITE. L'utilisateur qui appuie
       // sur Live veut VOIR le live -- le laisser sur un tour l'obligerait a
       // chercher, et il croirait que rien n'arrive.
@@ -5045,6 +5075,30 @@ function rlDecodeLive(b) {
   // continuer d'etre lu, sans canal et sans erreur.
   // ⚠ 0xFF EN INDICE = case inutilisee. La lire comme le canal 0 afficherait
   // un regime moteur faux.
+  // =====================================================================
+  // [v45] LE NIVEAU DE SIGNAL, AJOUTE PAR LE RELAIS A LA FIN DU PAQUET
+  // =====================================================================
+  // ⚠⚠ SANS LUI, ON MESURE LES PERTES SANS VOIR LE SIGNAL. La page disait
+  // OU le lien decroche, jamais COMMENT il se degrade avant -- donc
+  // impossible de distinguer une antenne mal placee d'une vraie limite de
+  // portee. Le relais connait le RSSI de chaque trame ; depuis LPU.0.19 il
+  // l'ajoute, avec le SNR, a la fin du paquet live.
+  //
+  // ⚠ ON TESTE LA LONGUEUR, PAS LA VERSION. Un relais plus ancien envoie 38
+  // octets : le signal reste simplement inconnu, et rien d'autre ne change.
+  // C'est la meme regle qui a permis d'allonger le live de 20 a 26 puis 38
+  // octets sans casser les pages deja en service.
+  //
+  // ⚠ LES DEUX OCTETS SONT SIGNES. Lus en non signes, -95 dBm deviendrait
+  // 161 -- une valeur plausible a l'oeil, et fausse partout.
+  if (b.length >= 40) {
+    liveRssi = dv.getInt8(38);
+    liveSnr  = dv.getInt8(39);
+    if (liveRssi < liveRssiMin) liveRssiMin = liveRssi;
+    if (liveRssi > liveRssiMax) liveRssiMax = liveRssi;
+    liveRssiSomme += liveRssi; liveRssiN++;
+  }
+
   if (b.length >= 38) {
     for (var k = 0; k < 4; k++) {
       var off = 26 + k * 3, idx = b[off];
@@ -5069,6 +5123,15 @@ function rlDecodeLive(b) {
       dy: (lat - liveOrigine.lat) * rad * R,
       dx: (lon - liveOrigine.lon) * rad * R * Math.cos(liveOrigine.lat * rad),
       kmh: kmh,
+      // ⚠⚠ [v45] LE SIGNAL EST GARDE AVEC LA POSITION, ET C'EST TOUT
+      // L'INTERET. Un RSSI global ne dit rien : c'est la courbe du signal
+      // EN FONCTION DE LA DISTANCE qui distingue une antenne mal placee --
+      // effondrement brutal -- d'une vraie limite de portee -- decroissance
+      // reguliere. Les deux se ressemblent quand on ne regarde que les
+      // pertes, et c'est ce qui a rendu l'essai du 5 septembre 2026 muet
+      // sur la CAUSE des 750 m.
+      rssi: liveRssi,
+      snr: liveSnr,
       saut: saut
     });
     // ⚠ ON PLAFONNE. Sans limite, dix minutes de live font 3000 points et
@@ -5098,6 +5161,15 @@ function rlDecodeLive(b) {
     ['Débit',     Math.round(liveOctets / secs) + ' o/s'],
     ['Gigue max', Math.round(liveGigueMax) + ' ms']
   ];
+  // ⚠⚠ LE SIGNAL, EN COULEUR, PENDANT QU'ON ROULE. C'est la donnee qui
+  // manquait : elle previent AVANT que le lien casse, la ou le compte de
+  // pertes ne le dit qu'apres. Les seuils sont ceux du relais, pour que les
+  // deux ecrans disent la meme chose.
+  if (liveRssi != null) {
+    var coul = liveRssi > -75 ? 'var(--ok-ink)' : (liveRssi > -95 ? '#c88a00' : 'var(--err-ink)');
+    lignes.push(['Signal', "<span style='color:" + coul + "'>" + liveRssi + ' dBm</span>'
+               + " <span style='opacity:.7'>snr " + liveSnr + '  (min ' + liveRssiMin + ')</span>']);
+  }
   if (liveSilences) lignes.push(['Silences', liveSilences + ' <span style="opacity:.7">(module muet, pas des pertes)</span>']);
   if (!liveDemandeParLaPage) lignes.push(['&#9888; Origine', 'live <b>non demandé par cette page</b>']);
   var h = '';
