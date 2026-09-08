@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v46</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v47</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -1025,23 +1025,16 @@ GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
      de presentation. Un filtre applique aux donnees ferait croire a une
      version absente et couperait des fonctions en silence.
      ===================================================================== -->
-<div class="card">
-<h2>Mode présentation</h2>
-<p class="small">
-  Cache les noms des technologies employées. La page garde
-  <b>exactement le même fonctionnement</b> : mêmes mesures, mêmes envois,
-  mêmes journaux. Seuls les mots changent.
-</p>
-<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+<!-- ⚠ LE BOUTON SEUL, SANS AUCUN TEXTE AUTOUR. C'est demande, et c'est
+     coherent avec ce que la carte sert : elle se montre a du monde. Un
+     paragraphe qui explique « cache les noms des technologies » annonce
+     precisement ce qu'on veut taire.
+
+     Le bouton porte donc son etat dans son propre libelle. Il n'y a plus
+     d'element `presEtat` : presAppliquer() ne le cherche plus. -->
+<div class="card" style="text-align:center;">
   <button type="button" class="btn btn2" id="btnPres" style="margin-top:0;width:auto;"
           onclick="presBasculer()">Présentation : arrêtée</button>
-  <span id="presEtat" class="small" style="opacity:.75;"></span>
-</div>
-<p class="small" style="margin:12px 0 0;opacity:.85;">
-  ⚠ <b>Le journal de diagnostic suit le mode.</b> Un journal préparé en mode
-  présentation porte les mots de présentation. Pour me l'envoyer, arrête le
-  mode d'abord : les vraies versions m'aident à trouver la cause.
-</p>
 </div>
 
 <script>
@@ -1136,12 +1129,11 @@ function presLibelles() {
 }
 
 function presAppliquer() {
+  // Le bouton porte l'etat, et il le porte SEUL : la carte n'a aucun texte
+  // autour. Un paragraphe qui explique le mode annoncerait a du monde
+  // exactement ce que le mode sert a taire.
   var b = document.getElementById('btnPres');
   if (b) b.textContent = presActif ? 'Présentation : EN MARCHE' : 'Présentation : arrêtée';
-  var s = document.getElementById('presEtat');
-  if (s) s.textContent = presActif
-    ? 'Les noms des technologies sont cachés.'
-    : 'Les vrais noms sont montrés.';
   presLibelles();
   presVersionsRedessiner();
   // ⚠ ON NE FORCE PAS LE PANNEAU DU LIVE. Il se dessine dans rlDecodeLive(),
