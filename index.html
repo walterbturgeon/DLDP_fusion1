@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v45</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v46</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -1003,7 +1003,161 @@ GPIO25/26). Voir la carte <b>Etat</b> pour le verdict.
 </p>
 </div>
 
+<!-- =====================================================================
+     [v46] MODE PRESENTATION -- EN BAS, ET C'EST VOULU
+     =====================================================================
+     Il ne change RIEN au fonctionnement : ni la radio, ni les mesures, ni
+     ce que la page envoie. Il change SEULEMENT les mots que l'ecran montre.
+
+     ⚠ IL EST EN BAS PARCE QU'ON NE LE TOUCHE PAS EN PISTE. Un interrupteur
+     de presentation place en haut serait a portee du pouce au moment ou on
+     cherche le bouton Live. Ici, on le regle avant, une fois.
+
+     Ce qu'il masque, et pourquoi ces mots-la :
+       RL_LO LPU.x.xx  -> RF x.xx    RL_LO = ReLais LOra, LPU = pont LoRa
+       DLD-FUS.x.xx    -> CPU x.xx   le nom interne du projet
+       CAR->RELAIS     -> RF         nomme les deux bouts de la liaison
+       ESP32 / ESP-NOW / LoRa        au cas ou ils entrent dans un texte
+
+     ⚠ LE FILTRE NE TOUCHE QUE L'AFFICHAGE. Les versions brutes restent en
+     memoire telles que l'appareil les a dites : les comparaisons de version
+     et les gardes de compatibilite lisent la valeur VRAIE, jamais le mot
+     de presentation. Un filtre applique aux donnees ferait croire a une
+     version absente et couperait des fonctions en silence.
+     ===================================================================== -->
+<div class="card">
+<h2>Mode présentation</h2>
+<p class="small">
+  Cache les noms des technologies employées. La page garde
+  <b>exactement le même fonctionnement</b> : mêmes mesures, mêmes envois,
+  mêmes journaux. Seuls les mots changent.
+</p>
+<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+  <button type="button" class="btn btn2" id="btnPres" style="margin-top:0;width:auto;"
+          onclick="presBasculer()">Présentation : arrêtée</button>
+  <span id="presEtat" class="small" style="opacity:.75;"></span>
+</div>
+<p class="small" style="margin:12px 0 0;opacity:.85;">
+  ⚠ <b>Le journal de diagnostic suit le mode.</b> Un journal préparé en mode
+  présentation porte les mots de présentation. Pour me l'envoyer, arrête le
+  mode d'abord : les vraies versions m'aident à trouver la cause.
+</p>
+</div>
+
 <script>
+// =====================================================================
+// [v46] MODE PRESENTATION -- LE FILTRE DE MOTS
+// =====================================================================
+// ⚠⚠ CE FILTRE NE TOUCHE QUE DU TEXTE D'AFFICHAGE. Il n'entre dans aucune
+// comparaison, aucune garde de version, aucun paquet emis. La regle est
+// simple et vaut pour toute retouche future :
+//
+//   la valeur VRAIE vit dans une variable, le mot filtre ne vit que dans
+//   le DOM ou dans le fichier du journal.
+//
+// L'inverse -- filtrer a la SOURCE, en changeant la chaine des sa lecture --
+// serait plus court a ecrire et deviendrait faux au premier usage nouveau.
+//
+// ✔ VERIFIE LE 2026-09-08 : aujourd'hui les deux versions ne servent QU'A
+// L'AFFICHAGE. Aucune garde ne les compare -- la page decide de la presence
+// du niveau de signal sur la LONGUEUR du paquet, jamais sur le numero de
+// version (voir rlDecodeLive). Le filtre ne peut donc rien casser.
+// ⚠ Cette propriete n'est pas garantie pour toujours. Le jour ou une garde
+// lira une version, elle doit lire `presVerRelais`, la valeur BRUTE -- jamais
+// le texte du DOM, qui porte le mot de presentation.
+var presActif = false;
+try { presActif = (localStorage.getItem('dld_presentation') === '1'); } catch (e) {}
+
+// Ordre IMPORTANT : du motif le plus long au plus court. « RL_LO LPU.0.20 »
+// doit devenir « RF 0.20 », pas « RF RF.0.20 » -- donc la paire se traite
+// AVANT chacun des deux mots isoles.
+var PRES_DICO = [
+  [/RL_LO\s+LPU\./g,   'RF '],
+  [/DLD-FUS\./g,       'CPU '],
+  [/LPU\./g,           'RF '],
+  [/RL_LO/g,           'RF'],
+  [/CAR\s*->\s*RELAIS/g, 'RF'],
+  [/ESP-?NOW/gi,       'wifi'],
+  [/ESP32-?S3/gi,      'CPU'],
+  [/ESP32/gi,          'CPU'],
+  [/LoRa/gi,           'RF']
+];
+
+// Rend le texte tel que l'ecran doit le montrer. Hors mode presentation,
+// elle rend la chaine INCHANGEE : un seul chemin de code dans les deux modes,
+// donc pas de branche qui pourrit sans qu'on la voie.
+function presMot(s) {
+  if (!presActif || s == null) return s;
+  var t = String(s);
+  for (var i = 0; i < PRES_DICO.length; i++) t = t.replace(PRES_DICO[i][0], PRES_DICO[i][1]);
+  return t;
+}
+
+// ---- les deux versions lues sur les appareils, gardees BRUTES ----
+// ⚠ Elles etaient ecrites directement dans le DOM. Le mode presentation
+// devait alors relire le DOM pour le refiltrer -- et un texte deja filtre
+// ne redonne jamais l'original. On garde donc la source, et on redessine.
+var presVerVoiture = null;   // null = pas connecte
+var presVerRelais  = null;
+var presVerVoitureMsg = 'voiture : non connectée';   // le texte quand il n'y a pas de version
+var presVerRelaisMsg  = 'relais : non connecté';
+
+function presVersionsRedessiner() {
+  var ev = document.getElementById('fwVer');
+  if (ev) {
+    if (presVerVoiture) ev.innerHTML = 'voiture : <b>' + presMot(presVerVoiture) + '</b>';
+    else                ev.textContent = presVerVoitureMsg;
+  }
+  var er = document.getElementById('rlVer');
+  if (er) {
+    if (presVerRelais) er.innerHTML = 'relais : <b>' + presMot(presVerRelais) + '</b>';
+    else               er.textContent = presVerRelaisMsg;
+  }
+}
+
+// Pose la version d'un appareil. `brute` peut etre null : l'appelant donne
+// alors le message a montrer a la place.
+function presVerPoser(quoi, brute, message) {
+  if (quoi === 'voiture') { presVerVoiture = brute; if (message) presVerVoitureMsg = message; }
+  else                    { presVerRelais  = brute; if (message) presVerRelaisMsg  = message; }
+  presVersionsRedessiner();
+}
+
+// ---- les libelles fixes du HTML ----
+// Un element porte `data-pres="le mot de presentation"`. On garde son texte
+// d'origine dans `data-vrai` au premier passage, pour pouvoir revenir.
+function presLibelles() {
+  var l = document.querySelectorAll('[data-pres]');
+  for (var i = 0; i < l.length; i++) {
+    var e = l[i];
+    if (e.getAttribute('data-vrai') === null) e.setAttribute('data-vrai', e.innerHTML);
+    e.innerHTML = presActif ? e.getAttribute('data-pres') : e.getAttribute('data-vrai');
+  }
+}
+
+function presAppliquer() {
+  var b = document.getElementById('btnPres');
+  if (b) b.textContent = presActif ? 'Présentation : EN MARCHE' : 'Présentation : arrêtée';
+  var s = document.getElementById('presEtat');
+  if (s) s.textContent = presActif
+    ? 'Les noms des technologies sont cachés.'
+    : 'Les vrais noms sont montrés.';
+  presLibelles();
+  presVersionsRedessiner();
+  // ⚠ ON NE FORCE PAS LE PANNEAU DU LIVE. Il se dessine dans rlDecodeLive(),
+  // qui a besoin d'un paquet : il n'existe aucune fonction a appeler ici.
+  // Le panneau se met a jour au paquet suivant, donc en 333 ms.
+  // Ecrire `rlLiveTableau()` « au cas ou » lancerait une exception qui
+  // arreterait presAppliquer() -- c'est le defaut qui a tue toute connexion
+  // a la voiture en v41, avec un appel a une fonction qui n'existait pas.
+}
+
+function presBasculer() {
+  presActif = !presActif;
+  try { localStorage.setItem('dld_presentation', presActif ? '1' : '0'); } catch (e) {}
+  presAppliquer();
+}
+
 // =====================================================
 // BLE : memes UUIDs que le firmware DRAGLOG_v7.ino
 // =====================================================
@@ -3407,7 +3561,12 @@ function diagTexte() {
          + ';' + (p.rssi == null ? '' : p.rssi)
          + ';' + (p.snr  == null ? '' : p.snr));
   });
-  return L.join('\n');
+  // ⚠ [v46] LE JOURNAL SUIT LE MODE PRESENTATION, ET IL LE DIT PLUS HAUT.
+  // Le filtre s'applique ICI, sur le texte fini : une seule ligne a lire pour
+  // savoir ce que le fichier contient. Filtre a la source, il aurait fallu
+  // le repeter a chaque L.push() -- et le prochain ajout l'aurait oublie.
+  // Hors mode presentation, presMot() rend la chaine inchangee.
+  return presMot(L.join('\n'));
 }
 
 // =====================================================================
@@ -3640,18 +3799,16 @@ async function rlAttacher(server) {
   try {
     var vv = await ch.readValue();
     var b0 = new Uint8Array(vv.buffer);
-    var er = document.getElementById('rlVer');
-    if (er) {
-      if (b0.length > 1 && b0[0] === 0x10) {
-        var txt = new TextDecoder().decode(b0.slice(1));
-        er.innerHTML = 'relais : <b>' + txt.replace(/[<>&]/g, '') + '</b>';
-      } else {
-        er.textContent = 'relais : version inconnue (firmware plus ancien)';
-      }
+    if (b0.length > 1 && b0[0] === 0x10) {
+      var txt = new TextDecoder().decode(b0.slice(1));
+      // ⚠ LA VERSION BRUTE EST GARDEE TELLE QUELLE. presVerPoser() la filtre
+      // pour l'ecran seulement ; la valeur reste vraie en memoire.
+      presVerPoser('relais', txt.replace(/[<>&]/g, ''));
+    } else {
+      presVerPoser('relais', null, 'relais : version inconnue (firmware plus ancien)');
     }
   } catch (e) {
-    var er2 = document.getElementById('rlVer');
-    if (er2) er2.textContent = 'relais : version illisible';
+    presVerPoser('relais', null, 'relais : version illisible');
   }
 
   rlEtat('Connecté à ' + (rlDevice.name || 'RELAY') + '. En attente d’un tour...');
@@ -3713,8 +3870,7 @@ function relaisDeconnecter() {
   // emet. On repart de « arrete », pour que l'appui suivant allume.
   if (liveOn) { liveOn = false; rlLiveMaj(); }
   rlBoutons(false);
-  var erd = document.getElementById('rlVer');
-  if (erd) erd.textContent = 'relais : non connecté';
+  presVerPoser('relais', null, 'relais : non connecté');
   rlEtat('Déconnecté du relais. Tu peux maintenant connecter la voiture pour changer de métier.');
   appAfficher();
 }
@@ -5339,10 +5495,8 @@ function appliquerCapacites(j) {
   // ne dit pas DE QUOI c'est la version -- de la page, de la voiture, du
   // relais ? Un numero sans son sujet se lit de travers au moment ou il
   // compte.
-  var elFw = document.getElementById('fwVer');
-  if (elFw) elFw.innerHTML = j.fw
-    ? ('voiture : <b>' + String(j.fw).replace(/[<>&]/g, '') + '</b>')
-    : 'voiture : version inconnue';
+  presVerPoser('voiture', j.fw ? String(j.fw).replace(/[<>&]/g, '') : null,
+               'voiture : version inconnue');
 
   // Un DLAP n'est pas un DRAGLOG diminue : on bascule la page entiere et on
   // sort. La banniere "firmware plus ancien" n'aurait aucun sens ici.
@@ -5709,6 +5863,14 @@ if (appMode !== null) {
   if (_ga) _ga.style.display = '';
 }
 appAfficher();
+
+// ⚠ [v46] LE MODE PRESENTATION SE REMET SEUL AU CHARGEMENT. Il est garde
+// dans le telephone : celui qui a montre l'appareil hier le retrouve dans le
+// meme etat aujourd'hui. Sans cela, la page repartirait avec les vrais noms
+// au pire moment -- devant du monde, apres un simple rechargement.
+// L'appel est protege : une exception ici arreterait tout le reste du
+// demarrage, y compris le Bluetooth.
+try { presAppliquer(); } catch (e) {}
 
 if (!navigator.bluetooth) document.getElementById('bleUnsupported').style.display = 'block';
 
