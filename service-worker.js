@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v48';  // v48 : un appareil sans cle app est DRAGLOGICS
+const CACHE = PREFIX + 'v49';  // v49 : page regroupee -- Bus CAN en accordeon, mode Autre, cartes Appareil et Course, OTA repliee
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
