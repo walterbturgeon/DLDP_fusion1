@@ -693,11 +693,10 @@ Pour revenir aux protocoles courants, reprends le premier menu.</p>
 <div id="blocTrlg" style="display:none;">
 <label for="lect">Lecture — d'où viennent les données</label>
 <select id="lect" onchange="lectChange()">
-<option value="OBD2">OBD-II — le module interroge la voiture</option>
+<option value="OBD2">OBD-II</option>
 <option value="LINK_GD">Link — Generic Dash</option>
 <option value="LINK_STRADA">Link — AIM MXS Strada</option>
 </select>
-<p class="small" id="lectDescr" style="margin-top:10px;"></p>
 <div id="grp_lid">
 <label for="lid">Identifiant du flux lu — ID de base, 1000 par défaut</label>
 <input id="lid" type="number" min="1" max="2047" value="1000">
@@ -2683,11 +2682,6 @@ var OBD_A_LISTE = [
   'Refroidissement, capteur 1 (PID 67) — °C',
   'Surface du collecteur — °C'
 ];
-var LECT_DESCR = {
-  OBD2: 'Le module interroge le calculateur, un PID a la fois, seulement ceux choisis ci-dessous. Il EMET sur le bus diagnostic. Le debit vient du balayage ISO 15765-4 : rien a regler.',
-  LINK_GD: 'Le module ecoute le flux Generic Dash du Link (14 trames, 20 Hz) a l identifiant ci-dessous.',
-  LINK_STRADA: 'Meme flux que le Generic Dash, lambda en x0,01 : le module corrige. Identifiant ci-dessous.'
-};
 // Vrai quand la page doit montrer lecture / envoi : le module annonce `lect`
 // ET le metier est TRACKLOGICS. En DRAGLOGICS, c est `mode` qui compte.
 function trlgSepare() { return !!capPresente.lect && appMode === 'trlg'; }
@@ -2704,7 +2698,6 @@ function lectChange() {
 function trlgSectionsAppliquer(silencieux) {
   var lect = lectCourante();
   var obd = (lect === 'OBD2');
-  var d = document.getElementById('lectDescr'); if (d) d.textContent = LECT_DESCR[lect] || '';
   // Rien des sections DRAGLOGICS (Holley, ECUMaster, declencheur...)
   document.querySelectorAll('[data-modes]').forEach(function (el) { el.style.display = 'none'; });
   // Debit et ID de lecture : Link seulement
