@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v49</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v50</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -664,6 +664,8 @@ trente. Une pastille indique ceux qui ne sont pas encore partis sur GitHub.</p>
      « Autre ». Aucun réglage n'est effacé par un changement de section :
      les champs cachés gardent leur valeur et repartent avec la sauvegarde.
 -->
+<!-- ---- DRAGLOGICS : un protocole = lecture et envoi ensemble ---- -->
+<div id="blocDlg">
 <label for="mode">Protocole du bus CAN</label>
 <select id="mode" name="mode" onchange="modeChange()"></select>
 
@@ -675,6 +677,33 @@ Pour revenir aux protocoles courants, reprends le premier menu.</p>
 </div>
 
 <p class="small" id="modeDescr" style="margin-top:10px;"></p>
+</div>
+
+<!-- =================================================================
+     [v50] TRACKLOGICS : LA LECTURE ET L'ENVOI SONT DEUX MENUS
+     =================================================================
+     Décision du 16 septembre 2026 : « seulement 3 modes de bus peuvent
+     être lus : OBD-II, Link Generic Dash, Link AIM Strada ; la vitesse du
+     bus et l'ID sont réglables en Link seulement ; le sens des données vers
+     l'ECU est un menu séparé ; rien ne sort par la prise OBD-II ». Ce bloc
+     remplace le sélecteur DRAGLOGICS quand le module annonce `lect` ET
+     que le métier est TRACKLOGICS (trlgSepare()). Les p1..p4 changent de
+     liste avec la lecture : 19 PID du groupe A en OBD-II, 38 canaux en Link.
+-->
+<div id="blocTrlg" style="display:none;">
+<label for="lect">Lecture — d'où viennent les données</label>
+<select id="lect" onchange="lectChange()">
+<option value="OBD2">OBD-II — le module interroge la voiture</option>
+<option value="LINK_GD">Link — Generic Dash</option>
+<option value="LINK_STRADA">Link — AIM MXS Strada</option>
+</select>
+<p class="small" id="lectDescr" style="margin-top:10px;"></p>
+<div id="grp_lid">
+<label for="lid">Identifiant du flux lu — ID de base, 1000 par défaut</label>
+<input id="lid" type="number" min="1" max="2047" value="1000">
+<p class="small">Le même que dans PCLink, canal « Transmit Generic Dash » ou « AIM MXS Strada ».</p>
+</div>
+</div>
 
 <div id="grp_cbr">
 <label for="cbr">Débit du bus CAN</label>
@@ -771,6 +800,24 @@ la mesure et lui rend son échelle.</p>
 </div>
 <p class="small" id="p8Note" style="display:none;opacity:.75;">Les quatre valeurs
 vers la base n'ont pas encore de table dans ce protocole ; elles partent à 0.</p>
+
+<!-- ---- [v50] TRACKLOGICS : l'envoi vers l'ECU, menu séparé ---- -->
+<div id="blocEnvoi" style="display:none;">
+<h3 style="margin:22px 0 0 0;font-size:16px;">Envoi — vers l'ECU</h3>
+<label for="env">Ce que le module envoie</label>
+<select id="env" onchange="lectChange()">
+<option value="NONE">Rien</option>
+<option value="LINK_STREAM">Flux Receive User Stream vers le Link (stream 1 et 2)</option>
+</select>
+<div id="grp_eid">
+<label for="eid">Identifiant de sortie — ID de base, 1200 par défaut</label>
+<input id="eid" type="number" min="1" max="2046" value="1200">
+<p class="small">Le second flux prend l'identifiant suivant (1201). Les deux doivent
+correspondre à <code>stream 1.lcs</code> et <code>stream 2.lcs</code> dans PCLink.</p>
+</div>
+</div>
+<p class="small" id="envNote" style="display:none;opacity:.75;">Rien ne sort par la
+prise OBD-II : l'envoi vers l'ECU est coupé dans cette lecture.</p>
 
 <!-- ---- Déclencheur générique : les anciens modes qui n'ont pas le leur ---- -->
 <div id="grp_scid" data-modes="LINK_AEM,FUELTECH_GPS,VAG_WHEELSPEED">
@@ -2533,10 +2580,21 @@ function modeChange() {
 // défaut du mode sauf en relecture. Toujours appelé après un changement de
 // menu ou de capacités.
 function canSectionsAppliquer(silencieux) {
+  // [v50] TRACKLOGICS sur un module qui separe lecture et envoi : un autre
+  // bloc, une autre logique. Le selecteur DRAGLOGICS reste dans la page,
+  // cache, avec la valeur du module : il repart tel quel a la sauvegarde.
+  var sep = trlgSepare();
+  var bd = document.getElementById('blocDlg'), bt = document.getElementById('blocTrlg'), be = document.getElementById('blocEnvoi');
+  if (bd) bd.style.display = sep ? 'none' : '';
+  if (bt) bt.style.display = sep ? '' : 'none';
+  if (be) be.style.display = sep ? '' : 'none';
+  if (sep) { trlgSectionsAppliquer(silencieux); return; }
+
   var tok = modeCourant();
   var fam = modeFamille(tok);
   var sel = document.getElementById('mode'), ga = document.getElementById('grp_autre');
   if (ga) ga.style.display = (sel && sel.value === MODE_AUTRE) ? '' : 'none';
+  var en = document.getElementById('envNote'); if (en) en.style.display = 'none';
 
   var p = protoParTok(tok), d = document.getElementById('modeDescr');
   if (d) d.textContent = p ? protoDescr(p, modeJsonDernier) : '';
@@ -2563,15 +2621,19 @@ function canSectionsAppliquer(silencieux) {
 // Les quatre menus p1..p4 : les 38 canaux du Generic Dash + « vide ».
 // La table d'échelle est côté serveur (TBS_p8.md) ; ici on ne choisit
 // qu'un indice.
+var p8ListeCourante = null;   // la liste dont les quatre menus sont remplis
+function p8Liste() { return (trlgSepare() && lectCourante() === 'OBD2') ? OBD_A_LISTE : LINK_CANAUX; }
 function p8Remplir(j) {
+  var liste = p8Liste();
   for (var k = 1; k <= 4; k++) {
     var sel = document.getElementById('p' + k);
     if (!sel) continue;
-    if (!sel.options.length) {
+    if (!sel.options.length || p8ListeCourante !== liste) {
+      sel.innerHTML = '';
       var ov = document.createElement('option'); ov.value = '255'; ov.text = '— Vide (envoie 0) —';
       sel.appendChild(ov);
-      for (var c = 0; c < LINK_CANAUX.length; c++) {
-        var o = document.createElement('option'); o.value = String(c); o.text = LINK_CANAUX[c];
+      for (var c = 0; c < liste.length; c++) {
+        var o = document.createElement('option'); o.value = String(c); o.text = liste[c];
         sel.appendChild(o);
       }
     }
@@ -2579,17 +2641,105 @@ function p8Remplir(j) {
     sel.value = (v != null) ? String(v) : '255';
     if (sel.value !== String(v != null ? v : 255)) sel.value = '255';
   }
+  p8ListeCourante = liste;
 }
 function p8AjouterAConfig(cfg) {
   if (!capPresente.p1) return '';
+  var borne = p8Liste().length;
   for (var k = 1; k <= 4; k++) {
     var sel = document.getElementById('p' + k);
     if (!sel) continue;
     var v = parseInt(sel.value, 10);
-    if (!isFinite(v) || v < 0 || (v > 37 && v !== 255)) return '<b>« Paramètre ' + k + ' » : valeur refusée.</b> Rien n’a été envoyé.';
+    if (!isFinite(v) || v < 0 || (v >= borne && v !== 255)) return '<b>« Paramètre ' + k + ' » : valeur refusée.</b> Rien n’a été envoyé.';
     cfg['p' + k] = v;
   }
   return '';
+}
+
+// =====================================================================
+// [v50] TRACKLOGICS : LECTURE ET ENVOI SEPARES
+// =====================================================================
+// Les 19 PID du groupe A de PID_priorites_ABC.md, DANS L'ORDRE DU FICHIER :
+// l'indice est ce que le firmware enregistre (OBD_A[] dans
+// DRAGLOG_PT2_obd.ino) et ce que le serveur lit (TBS_p8.md).
+var OBD_A_LISTE = [
+  'Regime moteur — tr/min',
+  'Couple demande par le conducteur — %',
+  'MAP, pression absolue collecteur — kPa',
+  'Temperature air admission (IAT) — °C',
+  'Position papillon — %',
+  'Pression barometrique — kPa',
+  'IAT, capteur 1 (PID 68) — °C',
+  'Boost commande (PID 70) — kPa',
+  'Pression d echappement banc 1 — kPa',
+  'Temperature echangeur (CACT) — °C',
+  'Statut boucle carburant — code',
+  'Pression carburant, jauge — kPa',
+  'Pression rampe relative au collecteur — kPa',
+  'Niveau reservoir — %',
+  'Liquide de refroidissement — °C',
+  'Air ambiant — °C',
+  'Huile moteur — °C',
+  'Refroidissement, capteur 1 (PID 67) — °C',
+  'Surface du collecteur — °C'
+];
+var LECT_DESCR = {
+  OBD2: 'Le module interroge le calculateur, un PID a la fois, seulement ceux choisis ci-dessous. Il EMET sur le bus diagnostic. Le debit vient du balayage ISO 15765-4 : rien a regler.',
+  LINK_GD: 'Le module ecoute le flux Generic Dash du Link (14 trames, 20 Hz) a l identifiant ci-dessous.',
+  LINK_STRADA: 'Meme flux que le Generic Dash, lambda en x0,01 : le module corrige. Identifiant ci-dessous.'
+};
+// Vrai quand la page doit montrer lecture / envoi : le module annonce `lect`
+// ET le metier est TRACKLOGICS. En DRAGLOGICS, c est `mode` qui compte.
+function trlgSepare() { return !!capPresente.lect && appMode === 'trlg'; }
+function lectCourante() { var e = document.getElementById('lect'); return e ? e.value : 'LINK_GD'; }
+
+// L'utilisateur a touche lecture ou envoi.
+function lectChange() {
+  // Changer de lecture change la table de p1..p4 : les indices ne veulent
+  // plus rien dire, on repart a vide (le firmware fait pareil).
+  if (p8ListeCourante !== p8Liste()) p8Remplir({});
+  canSectionsAppliquer(false);
+}
+
+function trlgSectionsAppliquer(silencieux) {
+  var lect = lectCourante();
+  var obd = (lect === 'OBD2');
+  var d = document.getElementById('lectDescr'); if (d) d.textContent = LECT_DESCR[lect] || '';
+  // Rien des sections DRAGLOGICS (Holley, ECUMaster, declencheur...)
+  document.querySelectorAll('[data-modes]').forEach(function (el) { el.style.display = 'none'; });
+  // Debit et ID de lecture : Link seulement
+  var cbr = document.getElementById('grp_cbr'); if (cbr) cbr.style.display = obd ? 'none' : '';
+  var lid = document.getElementById('grp_lid'); if (lid) lid.style.display = obd ? 'none' : '';
+  document.getElementById('cbr').disabled = false;
+  // p1..p4 : toujours, avec la liste de la lecture
+  var p8 = document.getElementById('grp_p8'); if (p8) p8.style.display = capPresente.p1 ? '' : 'none';
+  var pn = document.getElementById('p8Note'); if (pn) pn.style.display = 'none';
+  if (capPresente.p1 && p8ListeCourante !== p8Liste()) p8Remplir({});
+  // Envoi : coupe en OBD-II
+  var env = document.getElementById('env'), be = document.getElementById('blocEnvoi'), en = document.getElementById('envNote');
+  if (be) be.style.display = obd ? 'none' : '';
+  if (en) en.style.display = obd ? '' : 'none';
+  var eid = document.getElementById('grp_eid'); if (eid && env) eid.style.display = (env.value === 'LINK_STREAM') ? '' : 'none';
+}
+
+// Le JSON de lecture / envoi, si le module les separe. Rend un message
+// d erreur ou ''.
+function lectAjouterAConfig(cfg) {
+  if (!capPresente.lect) return '';
+  cfg.lect = lectCourante();
+  var lid = parseInt(document.getElementById('lid').value, 10);
+  var eid = parseInt(document.getElementById('eid').value, 10);
+  if (!isFinite(lid) || lid < 1 || lid > 2047) return '<b>« Identifiant du flux lu » : 1 a 2047.</b> Rien n’a été envoyé.';
+  if (!isFinite(eid) || eid < 1 || eid > 2046) return '<b>« Identifiant de sortie » : 1 a 2046.</b> Rien n’a été envoyé.';
+  cfg.lid = lid; cfg.eid = eid;
+  cfg.env = (cfg.lect === 'OBD2') ? 'NONE' : document.getElementById('env').value;
+  return '';
+}
+function lectRemplir(j) {
+  if (j.lect != null) { var l = document.getElementById('lect'); l.value = j.lect; if (l.value !== j.lect) l.value = 'LINK_GD'; }
+  if (j.lid != null) document.getElementById('lid').value = j.lid;
+  if (j.env != null) { var e = document.getElementById('env'); e.value = j.env; if (e.value !== j.env) e.value = 'NONE'; }
+  if (j.eid != null) document.getElementById('eid').value = j.eid;
 }
 
 // Montre la plage reellement occupee par le flux ECUMaster. Le champ est un
@@ -3248,6 +3398,9 @@ try { appMode = localStorage.getItem('dl_app_mode'); } catch (e) {}
 function appAfficher() {
   var g = document.getElementById('grp_app');
   if (!g) return;
+  // [v50] Le bloc Bus CAN depend du metier : DRAGLOGICS = un protocole,
+  // TRACKLOGICS = lecture / envoi (si le module les separe).
+  try { if (typeof canSectionsAppliquer === 'function') canSectionsAppliquer(true); } catch (e) {}
   var bd = document.getElementById('btnAppDlg');
   var bt = document.getElementById('btnAppTrlg');
   var et = document.getElementById('appEtat');
@@ -5820,10 +5973,12 @@ function appliquerCapacites(j) {
   });
   // [v49] Les clés qui ne portent pas de groupe mais filtrent le sélecteur.
   capPresente.obd = (j.obd != null);
+  capPresente.lect = (j.lect != null);   // [v50] le module separe lecture et envoi
   // Le sélecteur de protocole se reconstruit d'après ces clés, puis
   // l'accordéon se règle sur le mode courant.
   modeOptionsRendre(j);
-  if (capPresente.p1) p8Remplir(j);
+  // [v50] lecture / envoi et p1..p4 se remplissent PLUS BAS, apres le metier :
+  // la liste de p1..p4 depend de la lecture ET du metier (trlgSepare).
 
   // L'ecran divise depend de la carte, pas de la version : on retient sa
   // presence pour n'envoyer ses reglages qu'aux modules qui en ont un.
@@ -5854,6 +6009,13 @@ function appliquerCapacites(j) {
     try { localStorage.setItem('dl_app_mode', appMode); } catch (e) {}
   }
   appAfficher();
+  // [v50] Le metier est connu : lecture / envoi, puis p1..p4 avec la bonne
+  // liste, puis l aiguillage de la carte Bus CAN. Avant ce point, un
+  // p8Remplir() aurait pris la liste de l ANCIEN metier et le changement
+  // de metier aurait tout remis a vide (vu au banc de la page, 16 sept.).
+  if (capPresente.lect) lectRemplir(j);
+  if (capPresente.p1) p8Remplir(j);
+  canSectionsAppliquer(true);
 
   // ⚠⚠ `uniEnvoyer()` EST RETIRE : CETTE FONCTION N'A JAMAIS EXISTE.
   // L'appel etait la, seul, sans aucune definition nulle part -- verifie
@@ -6131,6 +6293,8 @@ async function submitConfig(ev) {
   var errDsp = dspAjouterAConfig(cfg);
   // [v49] Les quatre valeurs vers la base, si le module les annonce.
   if (!errDsp) errDsp = p8AjouterAConfig(cfg);
+  // [v50] Lecture / envoi du TRACKLOGICS, si le module les separe.
+  if (!errDsp) errDsp = lectAjouterAConfig(cfg);
   if (errDsp) {
     msg.innerHTML = "<div class='err'>" + errDsp + "</div>";
     return false;
