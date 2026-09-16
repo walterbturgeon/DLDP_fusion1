@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v47</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v48</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -5518,6 +5518,21 @@ function appliquerCapacites(j) {
   // loin de la voiture.
   if (j.app === 'dlg' || j.app === 'trlg') {
     appMode = j.app;
+    try { localStorage.setItem('dl_app_mode', appMode); } catch (e) {}
+  } else if (j.app == null) {
+    // ⚠⚠ [v48] UN APPAREIL SANS CLE `app` EST UN APPAREIL DRAGLOGICS. Le
+    // DLPT2 n'a pas d'interrupteur de metier : il ne sait faire QUE la
+    // ligne droite, et n'annonce donc pas `app`. Avant ce correctif, la page
+    // gardait alors le DERNIER metier vu -- « trlg » sur un telephone qui
+    // avait suivi le DLdisplay en TRACKLOGICS le 7 septembre 2026 -- et
+    // cachait les douze cartes `dlg-only` : plus de graphique de course, plus
+    // de jalons, plus de configuration Holley. Vu le 15 septembre 2026 au
+    // premier essai du DLPT2 sur cette page : « le PWA a coupe plein de
+    // choses ». Rien n'etait coupe ; la page se trompait de metier.
+    //
+    // On ne fait PAS annoncer `app` par le DLPT2 : ce serait montrer un
+    // interrupteur qui n'existe pas. C'est a la page de deduire.
+    appMode = 'dlg';
     try { localStorage.setItem('dl_app_mode', appMode); } catch (e) {}
   }
   appAfficher();
