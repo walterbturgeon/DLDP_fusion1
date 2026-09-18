@@ -4443,7 +4443,7 @@ function rlValeursRendre(lap) {
     var it = lap.pv.items[k];
     if (it.idx === 255) continue;
     vus++;
-    var f = function (x) { return (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(1)); };
+    var f = function (x) { return Math.abs(x) >= 100 ? x.toFixed(0) : Math.abs(x) < 10 ? x.toFixed(2) : x.toFixed(1); };
     var vide = (it.n === 0);
     h += '<tr style="text-align:right;' + (vide ? 'opacity:.5;' : '') + '">'
        + '<td style="text-align:left;padding:5px 10px 5px 0;">' + rlValeursNom(lap.pv.lect, it.idx) + '</td>'
@@ -4462,6 +4462,10 @@ function rlValeursRendre(lap) {
 
 // ---- Résumé de tour ----
 function rlDecodeTour(bytes) {
+  // [v52] ⚠ UN PAQUET TRONQUE NE DOIT PAS PLANTER LE DECODEUR. Sans MTU
+  // negocie (517), une notification s arrete a 20 octets ; lire au-dela
+  // levait une exception dans l ecouteur BLE, et la page se taisait.
+  if (bytes.length < 8 + CHANNELS.length * 6 + 2) { diagNoter('Resume de tour tronque (' + bytes.length + ' octets) : MTU BLE non negocie ?'); return; }
   var v = new DataView(bytes.buffer);
   var num = v.getUint16(1, true);
   var dureeMs = v.getUint32(3, true);
@@ -4488,6 +4492,7 @@ function rlDecodeTour(bytes) {
 
 // ---- Trace ----
 function rlDecodeTrace(bytes) {
+  if (bytes.length < 16) { diagNoter('Trace tronquee (' + bytes.length + ' octets)'); return; }   // [v52]
   var v = new DataView(bytes.buffer);
   var num = v.getUint16(1, true);
   var idx = v.getUint8(3), nb = v.getUint8(4), npts = v.getUint8(5);
