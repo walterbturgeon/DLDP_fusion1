@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v52</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v53</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -4050,6 +4050,11 @@ function diagTexte() {
     L.push(CHANNELS[i].name + ' = ' + c.der + '  min ' + c.min + '  max ' + c.max
          + '  ech ' + c.n + '  ' + CHANNELS[i].unit);
   }
+  for (var jo = 0; jo < OBD_A_LISTE.length; jo++) {   // [v53] les PID OBD-II du live
+    var co = liveCan[OBD_BASE + jo]; if (!co) continue; vus++;
+    var no = liveObdNom(jo);
+    L.push(no.name + ' = ' + co.der + '  min ' + co.min + '  max ' + co.max + '  ech ' + co.n + '  ' + no.unit);
+  }
   if (!vus) L.push('(aucun)');
   L.push('');
   L.push('--- JOURNAL (' + diagLignes.length + ' lignes) ---');
@@ -5317,8 +5322,13 @@ var liveLigne = null;        // la ligne virtuelle, en metres depuis l'origine
 // 38 canaux a raison de 4 par paquet : a 5 Hz, un canal revient toutes les
 // 2 secondes. Nommer ces bornes « min du tour » serait un mensonge, et la
 // page l'ecrit noir sur blanc sous le tableau.
-var liveCan = [];            // [i] = {der, min, max, n} ou null
-function liveCanRaz() { liveCan = new Array(CHANNELS.length).fill(null); }
+var liveCan = [];            // [i] = {der, min, max, n} ou null ; i < 38 = canal Link, 100 + j = PID OBD-II du groupe A
+// [v53] Les cases OBD-II du live (PT2.1.27) : indice 100 + j (j dans
+// OBD_A_LISTE), valeur x10 sauf le regime (j = 0) et la pression de rampe
+// (j = 12), x1. Meme regle que le firmware.
+function liveObdScale(j) { return (j === 0 || j === 12) ? 1 : 10; }
+function liveObdNom(j) { var t = OBD_A_LISTE[j] || ('PID ' + j); var p = t.split(' — '); return { name: p[0], unit: p[1] || '' }; }
+function liveCanRaz() { liveCan = new Array(OBD_BASE + OBD_A_LISTE.length).fill(null); }
 liveCanRaz();
 
 // =====================================================================
@@ -5653,6 +5663,23 @@ function rlLiveCanRendre() {
       + '<td style="padding:5px 0 5px 10px;opacity:.7;">' + ch.unit + '</td>'
       + '</tr>';
   }
+  // [v53] les valeurs OBD-II, apres les canaux Link (pas de poignee : l ordre
+  // est celui de p1..p4)
+  for (var j = 0; j < OBD_A_LISTE.length; j++) {
+    var co = liveCan[OBD_BASE + j];
+    if (!co) continue;
+    vus++;
+    var no = liveObdNom(j), deco = liveObdScale(j) === 10 ? 1 : 0;
+    lignes += '<tr>'
+      + '<td></td>'
+      + '<td style="padding:5px 10px 5px 0;">' + no.name + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;"><b>' + co.der.toFixed(deco) + '</b></td>'
+      + '<td style="text-align:right;padding:5px 10px;">' + co.min.toFixed(deco) + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;">' + co.max.toFixed(deco) + '</td>'
+      + '<td style="text-align:right;padding:5px 10px;opacity:.7;">' + co.n + '</td>'
+      + '<td style="padding:5px 0 5px 10px;opacity:.7;">' + no.unit + '</td>'
+      + '</tr>';
+  }
   tb.innerHTML = lignes;
   if (bloc) bloc.style.display = vus ? '' : 'none';
 }
@@ -5829,8 +5856,10 @@ function rlDecodeLive(b) {
   if (b.length >= 38) {
     for (var k = 0; k < 4; k++) {
       var off = 26 + k * 3, idx = b[off];
-      if (idx === 0xFF || idx >= CHANNELS.length) continue;
-      var brut = dv.getInt16(off + 1, true) / CHANNELS[idx].txScale;
+      if (idx === 0xFF) continue;
+      var brut;
+      if (idx >= OBD_BASE) { var j = idx - OBD_BASE; if (j >= OBD_A_LISTE.length) continue; brut = dv.getInt16(off + 1, true) / liveObdScale(j); }   // [v53]
+      else { if (idx >= CHANNELS.length) continue; brut = dv.getInt16(off + 1, true) / CHANNELS[idx].txScale; }
       var c = liveCan[idx];
       if (!c) liveCan[idx] = { der: brut, min: brut, max: brut, n: 1 };
       else {
