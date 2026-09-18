@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v51</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v52</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -520,6 +520,21 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
        change. L'ecart de moyenne le dit.
        ⚠ Elle defile horizontalement plutot que de se comprimer : six
        colonnes ecrasees sur un telephone deviennent illisibles. -->
+  <!-- [v52] LES QUATRE VALEURS DU TOUR (p1..p4), min / moyenne / max.
+       Rempli par le paquet 0x08 du DLPT2 (PT2.1.24) relaye par le collecteur
+       marie. Quand il existe pour le tour vu, le tableau des 38 canaux
+       ci-dessous est replie : « seulement les quatre, min max et moyenne ». -->
+  <div id="relaisValeurs" style="margin-top:16px;display:none;">
+    <h2 style="font-size:1em;">Valeurs du tour</h2>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table style="width:100%;border-collapse:collapse;font-size:15px;white-space:nowrap;">
+        <thead><tr style="text-align:right;"><th style="text-align:left;padding:5px 10px 5px 0;">Valeur</th><th style="padding:5px 8px;">Min</th><th style="padding:5px 8px;">Moyenne</th><th style="padding:5px 8px;">Max</th><th style="padding:5px 8px;">n</th></tr></thead>
+        <tbody id="relaisValeursTbody"></tbody>
+      </table>
+    </div>
+    <p class="small" id="relaisValeursNote" style="opacity:.75;margin:6px 0 0;"></p>
+  </div>
+
   <div id="relaisCanaux" style="margin-top:16px;display:none;">
     <h2 style="font-size:1em;">Canaux du tour</h2>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
@@ -4390,6 +4405,59 @@ function rlNotif(ev) {
   if (bytes[0] === 0x01) rlDecodeTour(bytes);
   else if (bytes[0] === 0x02) rlDecodeTrace(bytes);
   else if (bytes[0] === 0x06) rlDecodeLive(bytes);
+  else if (bytes[0] === 0x08) rlDecodeValeurs(bytes);   // [v52] les 4 valeurs du tour
+}
+
+// ---- [v52] Les quatre valeurs du tour (paquet 0x08 de PT2.1.24) ----
+// [0] 0x08 [1..2] tour [3] lecture (0 OBD2, 1 Link GD, 2 Link Strada)
+// [4..7] indices p1..p4 (255 = vide) [8..55] 4 x (min, max, moyenne) f32
+// [56..59] nombre d echantillons. Range dans le tour s il est deja la,
+// sinon en attente : le 0x08 et le 0x01 partent en meme temps, l ordre
+// d arrivee n est pas garanti.
+var rlValeursAttente = {};
+function rlDecodeValeurs(bytes) {
+  if (bytes.length < 60) return;
+  var v = new DataView(bytes.buffer, bytes.byteOffset);
+  var num = v.getUint16(1, true);
+  var pv = { lect: v.getUint8(3), items: [] };
+  for (var k = 0; k < 4; k++) {
+    pv.items.push({ idx: v.getUint8(4 + k), min: v.getFloat32(8 + k * 12, true), max: v.getFloat32(12 + k * 12, true),
+                    moy: v.getFloat32(16 + k * 12, true), n: v.getUint8(56 + k) });
+  }
+  var lap = null;
+  for (var i = 0; i < rlLaps.length; i++) if (rlLaps[i].num === num) lap = rlLaps[i];
+  if (lap) { lap.pv = pv; if (rlLapVu === lap) rlRendre(); }
+  else rlValeursAttente[num] = pv;
+  diagNoter('Valeurs du tour #' + num + ' recues (lecture ' + pv.lect + ')');
+}
+function rlValeursNom(lect, idx) {
+  var liste = (lect === 0) ? OBD_A_LISTE : LINK_CANAUX;
+  return (idx < liste.length) ? liste[idx] : ('canal ' + idx);
+}
+function rlValeursRendre(lap) {
+  var bloc = document.getElementById('relaisValeurs'), tb = document.getElementById('relaisValeursTbody');
+  if (!bloc || !tb) return false;
+  if (!lap || !lap.pv) { bloc.style.display = 'none'; return false; }
+  var h = '', vus = 0;
+  for (var k = 0; k < 4; k++) {
+    var it = lap.pv.items[k];
+    if (it.idx === 255) continue;
+    vus++;
+    var f = function (x) { return (Math.abs(x) >= 100 ? x.toFixed(0) : x.toFixed(1)); };
+    var vide = (it.n === 0);
+    h += '<tr style="text-align:right;' + (vide ? 'opacity:.5;' : '') + '">'
+       + '<td style="text-align:left;padding:5px 10px 5px 0;">' + rlValeursNom(lap.pv.lect, it.idx) + '</td>'
+       + '<td style="padding:5px 8px;">' + (vide ? '—' : f(it.min)) + '</td>'
+       + '<td style="padding:5px 8px;font-weight:700;">' + (vide ? '—' : f(it.moy)) + '</td>'
+       + '<td style="padding:5px 8px;">' + (vide ? '—' : f(it.max)) + '</td>'
+       + '<td style="padding:5px 8px;">' + it.n + (it.n >= 255 ? '+' : '') + '</td></tr>';
+  }
+  tb.innerHTML = h;
+  var note = document.getElementById('relaisValeursNote');
+  if (note) note.textContent = vus ? (lap.pv.lect === 0 ? 'Lecture OBD-II, sur le tour #' + lap.num + '.' : 'Lecture Link, sur le tour #' + lap.num + '.')
+                                   : 'Aucun paramètre choisi (p1..p4 vides dans la carte Bus CAN).';
+  bloc.style.display = '';
+  return vus > 0;
 }
 
 // ---- Résumé de tour ----
@@ -4412,6 +4480,7 @@ function rlDecodeTour(bytes) {
   }
   var lap = { num: num, dureeMs: dureeMs, source: source, vals: vals,
               flags: flags, oLat: oLat, oLon: oLon, dMax: dMax };
+  if (rlValeursAttente[num]) { lap.pv = rlValeursAttente[num]; delete rlValeursAttente[num]; }   // [v52]
   rlLaps.push(lap);
   rlLapVu = lap;
   rlRendre();
@@ -5109,11 +5178,16 @@ function rlRendre() {
   // temperature qui monte, une pression qui baisse, un regime moyen qui
   // s'effondre. Sans le tour precedent, on affiche un tiret plutot que
   // d'inventer une reference.
+  // [v52] Les quatre valeurs choisies d abord ; quand elles sont la, le
+  // tableau des 38 canaux se replie (il reste pour les firmwares d avant).
+  var avecValeurs = rlValeursRendre(lap);
+
   var tb = document.getElementById('relaisTbody');
   var bloc = document.getElementById('relaisCanaux');
   // ⚠ MEME REGLE QUE POUR LE LIVE : on ne reconstruit pas le tableau
   // pendant qu'un doigt tient une ligne, sinon le geste est perdu.
   if (chDragTr) return;
+  if (avecValeurs) { if (bloc) bloc.style.display = 'none'; return; }
   if (tb && lap.vals && lap.vals.length === CHANNELS.length) {
     var lignes = '';
     for (var q = 0; q < chOrdre.length; q++) {
