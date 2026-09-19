@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v53</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v54</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -433,6 +433,7 @@ Ce navigateur ne fait pas le Bluetooth Web. Prends Chrome sur Android. Sur iPhon
 <button type="button" class="btn" id="btnRelais" style="margin-top:0;" onclick="relaisConnecter()">Connecter</button>
 <button type="button" class="btn btn2" id="btnRelaisOff" style="margin-top:0;display:none;" onclick="relaisDeconnecter()">Déconnecter</button>
 <button type="button" class="btn btn2" id="btnResetTours" style="margin-top:0;" onclick="rlResetTours()">Effacer les tours</button>
+<button type="button" class="btn btn2" id="btnLigneRaz" style="margin-top:0;" onclick="rlLigneRaz()">Refaire la ligne</button>
 <button type="button" class="btn btn3" id="btnSimTour" style="margin-top:0;" onclick="rlSimulerTour()">Simuler un tour</button>
 <button type="button" class="btn btn2" id="btnLive" style="margin-top:0;" onclick="rlLiveBascule()">Live : arrêté</button>
 <span id="relaisStatus" class="small">Pas connecté</span>
@@ -5927,6 +5928,12 @@ function rlDecodeLive(b) {
                + " <span style='opacity:.7'>snr " + liveSnr + '  (min ' + liveRssiMin + ')</span>']);
   }
   if (liveSilences) lignes.push(['Silences', liveSilences + ' <span style="opacity:.7">(module muet, pas des pertes)</span>']);
+  // [v54] La ligne virtuelle : le trait sur la carte n apparait que calibree.
+  // Sans cette ligne, on ne sait pas si le trait manque parce que la ligne
+  // n est pas encore apprise ou parce que le paquet ne la porte pas.
+  lignes.push(['Ligne virtuelle', liveLigne == null ? '<span style="opacity:.7">inconnue (paquet sans ligne)</span>'
+    : liveLigne.calibree ? "<span style='color:var(--ok-ink)'>calibrée</span> <span style='opacity:.7'>trait sur la carte</span>"
+    : "<span style='color:#c88a00'>pas encore calibrée</span> <span style='opacity:.7'>3 passages devant le beacon</span>"]);
   if (!liveDemandeParLaPage) lignes.push(['&#9888; Origine', 'live <b>non demandé par cette page</b>']);
   var h = '';
   lignes.forEach(function (r) {
@@ -5941,6 +5948,23 @@ function rlDecodeLive(b) {
       ? "<b style='color:var(--err-ink)'>&#9888; Plus d'un paquet sur cinq se perd — le lien décroche.</b>"
       : "La gigue est la <b>variation</b> du délai, pas le délai lui-même : "
         + "les horloges du module et de la tablette ne sont pas recalées.";
+  }
+}
+
+// [v54] REFAIRE LA LIGNE VIRTUELLE : la commande 0x03, que le relais passe a
+// sa voiture mariee. Le module efface sa ligne et la reapprend aux trois
+// passages suivants devant le beacon. Confirmation obligatoire : une ligne
+// valide coute trois passages a retrouver.
+async function rlLigneRaz() {
+  if (!rlCmdChar) { rlEtat('Le relais n’est pas connecté : la ligne n’a pas été touchée.'); return; }
+  if (!confirm('Refaire la ligne virtuelle ?\n\nLe module efface sa ligne et la réapprend aux 3 prochains passages devant le beacon. Les tours affichés ne sont pas touchés.')) return;
+  diagNoter('APPUI Refaire la ligne (0x03)');
+  try {
+    await rlCmdChar.writeValue(new Uint8Array([0x03]));
+    if (liveLigne) liveLigne.calibree = false;
+    rlEtat('Ligne effacée. Passe 3 fois devant le beacon : la ligne se recalibre, puis le trait revient sur la carte.');
+  } catch (e) {
+    rlEtat('La commande n’est pas partie : ' + e.message);
   }
 }
 
