@@ -22,7 +22,7 @@ const PREFIX = 'draglog-trlg-';
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION. C'est lui qui distingue
 // l'ancien cache du neuf : sans changement, le navigateur garde l'ancien
 // et la page d'hier continue de s'afficher.
-const CACHE = PREFIX + 'v54';  // v54 : etat de la ligne virtuelle + bouton Refaire la ligne (0x03)
+const CACHE = PREFIX + 'v55';  // v55 : la ligne virtuelle = petit trait magenta a 90 degres du passage, plus le point
 // ⚠ CETTE LISTE DOIT CORRESPONDRE AUX FICHIERS REELS. `cache.addAll()` est
 // tout-ou-rien : un seul nom absent fait echouer l'installation ENTIERE du
 // service worker. Et sans service worker installe, Chrome n'offre jamais
