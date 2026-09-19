@@ -300,7 +300,7 @@ body.chDragActif{user-select:none;-webkit-user-select:none;}
      ecrites : l'OBD-II n'a jamais parle a un calculateur.
      ===================================================================== -->
 <div class="small" style="text-align:center;margin:-12px 0 16px;opacity:.7;line-height:1.5;">
-  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v55</b></span>
+  <span title="Version de cette page. Si elle ne change pas apres une mise a jour, tu regardes le cache." id="pageVer">page <b>fusion v56</b></span>
   <br><span id="fwVer" style="opacity:.85;">voiture : non connectée</span>
   <br><span id="rlVer" style="opacity:.85;">relais : non connecté</span>
   <br><button type="button" id="btnUnites" onclick="uniBascule()"
@@ -4577,6 +4577,13 @@ function rlDessinerTrace(num) {
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2;
   g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
 
+  // [v56] La ligne virtuelle fait partie de la carte du tour, pas du live.
+  // ⚠ Elle etait tracee seulement a l'arrivee d'un paquet live : le fond
+  // satellite qui arrive apres, ou un changement d'onglet, redessinait la
+  // carte SANS elle -- « je la vois en live mais pas dans le #916 ».
+  // Le repere du tour est celui du module : pas de conversion.
+  if (liveLigne && liveLigne.calibree) rlLigneTracer(g, X, Y, liveLigne.x, liveLigne.y, true);
+
   // Le point touché, redessiné par-dessus le tracé.
   if (rlPointVu != null && rlPointVu >= 0 && rlPointVu < pts.length) {
     var pv = pts[rlPointVu];
@@ -5376,6 +5383,35 @@ function rlVoirLive() {
 }
 
 // Dessine la trace du live, avec sa propre echelle.
+// [v56] Le trait de la ligne virtuelle : 8 m de part et d'autre du point de
+// passage (lx, ly), a 90 degres du cap (liveLigne.hx, hy). X et Y sont la
+// projection de la carte qui appelle ; lx, ly sont dans le repere de cette
+// carte. `point` ajoute le point de passage lui-meme.
+// ⚠ LA LIGNE EST PERPENDICULAIRE AU CAP. Le module garde le vecteur de
+// DIRECTION du passage ; la ligne qu'on franchit lui est a angle droit.
+// Tracer le cap lui-meme dessinerait la trajectoire, pas la ligne.
+// ⚠⚠ UN HALO CLAIR SOUS UN TRAIT MAGENTA. Un premier essai en blanc etait
+// invisible sur le fond blanc, sans que rien ne le dise. Le magenta n'est
+// ni dans l'echelle vert-rouge de la vitesse, ni dans le fond satellite ;
+// le halo le garde lisible sur le satellite, qui est sombre.
+function rlLigneTracer(g, X, Y, lx, ly, point) {
+  var L = 8;
+  var px = -liveLigne.hy, py = liveLigne.hx;
+  var x1 = X(lx - px * L), y1 = Y(ly - py * L);
+  var x2 = X(lx + px * L), y2 = Y(ly + py * L);
+  g.save();
+  g.lineCap = 'round'; g.setLineDash([]);
+  g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 9;
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+  g.strokeStyle = '#ff1fd0'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+  if (point) {
+    g.fillStyle = '#ff1fd0'; g.strokeStyle = '#ffffff'; g.lineWidth = 2;
+    g.beginPath(); g.arc(X(lx), Y(ly), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+  }
+  g.restore();
+}
+
 // [v55] La ligne virtuelle dans le repere du LIVE, ou null si on ne peut
 // pas la placer avec certitude. Il faut : une ligne calibree, un premier
 // point de live (liveOrigine) et l'origine d'un vrai tour du module.
@@ -5500,19 +5536,7 @@ function rlDessinerLiveCarte() {
   // placerait a des dizaines de metres de sa vraie position, sans que rien
   // ne le dise. Un tour simule n'a pas la bonne origine non plus.
   var lig = rlLigneEnLive();
-  if (lig) {
-    var L = 8;                        // 8 m de part et d'autre : un petit trait, pas une barriere
-    var px = -liveLigne.hy, py = liveLigne.hx;   // perpendiculaire au cap du passage
-    var lx1 = X(lig.x - px * L), ly1 = Y(lig.y - py * L);
-    var lx2 = X(lig.x + px * L), ly2 = Y(lig.y + py * L);
-    g.save();
-    g.lineCap = 'round';
-    g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 9;   // halo clair, lisible sur le satellite
-    g.beginPath(); g.moveTo(lx1, ly1); g.lineTo(lx2, ly2); g.stroke();
-    g.strokeStyle = '#ff1fd0'; g.lineWidth = 4;                 // magenta : absent de l'echelle vert-rouge
-    g.beginPath(); g.moveTo(lx1, ly1); g.lineTo(lx2, ly2); g.stroke();
-    g.restore();
-  }
+  if (lig) rlLigneTracer(g, X, Y, lig.x, lig.y, false);
 
   // Le point courant, au bout de la trace.
   var d = liveTrace[liveTrace.length - 1];
@@ -5564,33 +5588,8 @@ function rlDessinerLive() {
 
   rlDessinerTrace(lap.num);          // on repart d'une carte propre
 
-  // ---- le trait de la ligne virtuelle ----
-  if (liveLigne && liveLigne.calibree) {
-    // ⚠ LA LIGNE EST PERPENDICULAIRE AU CAP. Le module garde le vecteur de
-    // DIRECTION du passage ; la ligne qu'on franchit lui est a angle droit.
-    // Tracer le cap lui-meme dessinerait la trajectoire, pas la ligne.
-    var L = 8;                        // [v55] 8 m de part et d'autre : un petit trait, pas une barriere
-    var px = -liveLigne.hy, py = liveLigne.hx;
-    var x1 = rlProj.X(liveLigne.x - px * L), y1 = rlProj.Y(liveLigne.y - py * L);
-    var x2 = rlProj.X(liveLigne.x + px * L), y2 = rlProj.Y(liveLigne.y + py * L);
-    g.save();
-    // ⚠⚠ UN HALO CLAIR SOUS UN TRAIT SOMBRE. Mon premier essai tracait la
-    // ligne en BLANC : elle etait parfaitement invisible sur le fond blanc
-    // de la carte, et rien ne le disait -- le code s'executait, le trait
-    // etait bien la, on ne le voyait pas. Le halo la rend lisible aussi
-    // sur le fond satellite, qui est sombre.
-    g.lineCap = 'round';
-    // [v55] Couleur contrastante (magenta) : ni le vert-rouge de la vitesse,
-    // ni le bleu des liens, ni le fond satellite. Plein, pas pointille.
-    g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 9; g.setLineDash([]);
-    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-    g.strokeStyle = '#ff1fd0'; g.lineWidth = 4;
-    g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
-    // le point de passage lui-meme
-    g.fillStyle = '#ff1fd0'; g.strokeStyle = '#ffffff'; g.lineWidth = 2;
-    g.beginPath(); g.arc(rlProj.X(liveLigne.x), rlProj.Y(liveLigne.y), 5, 0, Math.PI * 2); g.fill(); g.stroke();
-    g.restore();
-  }
+  // [v56] Le trait de la ligne virtuelle est trace par rlDessinerTrace :
+  // il fait partie de la carte du tour, et survit a chaque redessin.
 
   // ---- le point du module, maintenant ----
   if (liveDernier && liveDernier.valide) {
