@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRACKLOGICS MT</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="../icon-192.png" type="image/png">
+<meta name="theme-color" content="#111111">
+<style>
+  :root { --bg:#f7f7f7; --card:#fff; --ink:#111; --muted:#666; --line:#e2e2e2; --ok:#1c8f4a; --warn:#c0392b; --accent:#0a66c2; --tab:#eee; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#14171c; --card:#1d2128; --ink:#eee; --muted:#9aa; --line:#2c323b; --tab:#262b33; } }
+  :root[data-theme="dark"] { --bg:#14171c; --card:#1d2128; --ink:#eee; --muted:#9aa; --line:#2c323b; --tab:#262b33; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; font-size:16px; }
+  header { padding:12px 16px 8px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+  header h1 { font-size:1.15em; margin:0; letter-spacing:.04em; }
+  header .ver { color:var(--muted); font-size:.85em; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:0 16px 12px; padding:12px 14px; }
+  .btn { background:var(--ink); color:var(--bg); border:0; border-radius:10px; padding:10px 16px; font-size:1em; cursor:pointer; }
+  .btn.sec { background:var(--tab); color:var(--ink); }
+  .btn.warn { background:var(--warn); color:#fff; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .small { color:var(--muted); font-size:.85em; }
+  .tabs { display:flex; gap:6px; margin:0 16px 12px; flex-wrap:wrap; }
+  .tab { background:var(--tab); border:1px solid var(--line); border-radius:10px; padding:8px 14px; cursor:pointer; min-width:120px; }
+  .tab.on { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+  .tab .nom { font-weight:600; }
+  .tab .sub { font-size:.75em; opacity:.75; }
+  .tab .portee { display:inline-block; width:9px; height:9px; border-radius:50%; background:#999; margin-right:6px; }
+  .tab .portee.ok { background:var(--ok); }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { font-weight:600; color:var(--muted); font-size:.85em; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.sel td { background:rgba(10,102,194,.12); }
+  tr.clic { cursor:pointer; }
+  .grand { font-size:2em; font-weight:600; font-variant-numeric:tabular-nums; }
+  .grille { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  canvas { width:100%; border-radius:10px; display:block; background:#fafafa; }
+  @media (prefers-color-scheme: dark) { canvas { background:#11151a; } }
+  .jrn { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.78em; white-space:pre-wrap; max-height:200px; overflow:auto; color:var(--muted); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:.8em; background:var(--tab); }
+  .badge.ok { background:var(--ok); color:#fff; }
+  .badge.warn { background:var(--warn); color:#fff; }
+  details summary { cursor:pointer; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>TRACKLOGICS — tour à tour</h1>
+  <span class="ver" id="pageVer">page MT v1</span>
+  <span class="badge" id="majBadge" style="display:none">mise à jour…</span>
+</header>
+
+<div class="card">
+  <div class="row">
+    <button class="btn" id="btnConn" onclick="connecter()">Connecter le collecteur</button>
+    <span id="etat" class="small">Pas connecté.</span>
+  </div>
+  <div class="small" id="collInfo" style="margin-top:6px"></div>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<div id="vide" class="card small">Aucune voiture encore. Connecte le collecteur (RELAY_MT) : les voitures apparaissent à leur premier battement ou à leur premier tour.</div>
+
+<div id="voiture" style="display:none">
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><span class="grand" id="vNom"></span> <span class="small" id="vSub"></span></div>
+      <div class="row">
+        <button class="btn sec" onclick="ligneRefaire()">Refaire la ligne</button>
+        <button class="btn sec" onclick="toursEffacer()">Effacer les tours</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="tourCard" style="display:none">
+    <div class="grille">
+      <div><div class="small">Tour</div><div class="grand" id="tNum"></div></div>
+      <div><div class="small">Temps</div><div class="grand" id="tTemps"></div></div>
+      <div><div class="small">Écart vs précédent</div><div class="grand" id="tEcart"></div></div>
+      <div><div class="small">Écart vs meilleur</div><div class="grand" id="tBest"></div></div>
+    </div>
+    <div class="small" id="tSrc" style="margin-top:6px"></div>
+    <table id="tVals" style="margin-top:10px"></table>
+    <div class="row" style="margin:10px 0 6px">
+      <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
+      <span class="small" id="satEtat"></span>
+    </div>
+    <canvas id="carte" height="10"></canvas>
+    <div class="small" id="carteLeg"></div>
+  </div>
+
+  <div class="card">
+    <div class="small" style="letter-spacing:.08em;margin-bottom:6px">TOURS</div>
+    <table id="tours"><thead><tr><th>#</th><th class="num">Temps</th><th class="num">Écart</th><th>Chrono</th><th class="num">Reçu</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
+<div class="card">
+  <details>
+    <summary>Journal de diagnostic</summary>
+    <div class="row" style="margin:8px 0"><button class="btn sec" onclick="jrnPartager()">Télécharger le journal</button><button class="btn sec" onclick="jrnEffacer()">Effacer</button></div>
+    <div class="jrn" id="jrn"></div>
+  </details>
+</div>
+
+<script>
+// =====================================================================
+// TRACKLOGICS MT -- la page « tour a tour » de Mont-Tremblant (sept. 2026)
+// =====================================================================
+// Une page NEUVE, a cote de la page fusion v56 (le jalon, intouche).
+// Elle parle au COLLECTEUR (TRLG_Collecteur_MT, nom BLE RELAY_MT), qui
+// enveloppe chaque paquet d'un DLPT2 : [0x11][indice voiture][paquet].
+// Un onglet par voiture, nomme par le nom BLE de la boite (identite 0x09) ;
+// le numero de serie (MAC) en sous-texte. Tout est range par MAC.
+// Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
+// le module envoie), sa trace, sa carte.
+var PAGE_VER = 'MT v1';
+var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
+var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
+var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
+var ENV = 0x11;
+var NB_CANAUX = 38;      // le resume 0x01 porte 38 canaux Link (min, max, moy en int16)
+
+// ---- l'etat ----
+var voitures = {};        // mac -> {mac, idx, nom, num, fw, vuMs, laps:{num->lap}, traces:{num->{parts,nb}}, ordre:[]}
+var ordreVoitures = [];   // les MAC dans l'ordre d'apparition
+var idxVersMac = {};      // indice du collecteur -> MAC (appris par l'identite 0x09)
+var vueMac = null;        // l'onglet ouvert
+var vueTour = null;       // le tour affiche
+var device = null, cmdChar = null, dataChar = null, connecte = false;
+var satVoulu = false, satImg = null, satCle = '';
+var proj = null;
+
+// ---- journal ----
+var jrnLignes = [];
+function jrn(t) {
+  var d = new Date(); var h = d.toTimeString().slice(0, 8);
+  jrnLignes.push(h + ' ' + t); if (jrnLignes.length > 400) jrnLignes.shift();
+  var e = document.getElementById('jrn'); if (e) { e.textContent = jrnLignes.join('\n'); e.scrollTop = e.scrollHeight; }
+}
+function jrnEffacer() { jrnLignes = []; jrn('Journal efface.'); }
+function jrnPartager() {
+  var corps = 'TRACKLOGICS MT -- journal\n' + new Date().toString() + '\npage ' + PAGE_VER + '\n\n';
+  ordreVoitures.forEach(function (m) { var v = voitures[m]; corps += 'voiture ' + v.nom + ' ' + m + ' num=' + v.num + ' fw=' + v.fw + ' tours=' + Object.keys(v.laps).length + '\n'; });
+  corps += '\n' + jrnLignes.join('\n') + '\n';
+  var b = new Blob([corps], { type: 'text/plain' }); var a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = 'tracklogics_mt_' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + '.txt'; a.click();
+}
+function etat(t) { document.getElementById('etat').textContent = t; jrn(t); }
+
+// ---- BLE ----
+async function connecter() {
+  if (!navigator.bluetooth) { etat('Ce navigateur ne fait pas le Bluetooth Web.'); return; }
+  if (connecte && device) { try { device.gatt.disconnect(); } catch (e) {} return; }
+  try {
+    etat('Recherche du collecteur...');
+    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [RL_SVC] }], optionalServices: [RL_SVC] });
+    device.addEventListener('gattserverdisconnected', function () {
+      connecte = false; cmdChar = null;
+      document.getElementById('btnConn').textContent = 'Connecter le collecteur';
+      etat('Collecteur deconnecte. Reconnexion dans 3 s...');
+      setTimeout(reconnecter, 3000);
+    });
+    var srv = await device.gatt.connect();
+    await attacher(srv);
+  } catch (e) { etat('Erreur : ' + e.message); }
+}
+async function reconnecter() {
+  if (!device || connecte) return;
+  try { var srv = await device.gatt.connect(); await attacher(srv); }
+  catch (e) { etat('Reconnexion ratee (' + e.message + '), nouvel essai dans 5 s'); setTimeout(reconnecter, 5000); }
+}
+async function attacher(server) {
+  var svc = await server.getPrimaryService(RL_SVC);
+  var ch = await svc.getCharacteristic(RL_DATA);
+  await ch.startNotifications();
+  if (dataChar) { try { dataChar.removeEventListener('characteristicvaluechanged', notif); } catch (e) {} }
+  dataChar = ch; ch.addEventListener('characteristicvaluechanged', notif);
+  cmdChar = await svc.getCharacteristic(RL_CMD);
+  connecte = true;
+  document.getElementById('btnConn').textContent = 'Deconnecter';
+  var nom = device.name || '?';
+  etat('Connecte a ' + nom + '. Le collecteur renvoie ce qu’il garde...');
+  try {
+    var v = await ch.readValue(); var b = new Uint8Array(v.buffer);
+    if (b[0] === 0x10) { var fw = new TextDecoder().decode(b.slice(1)); document.getElementById('collInfo').textContent = 'Collecteur : ' + fw; jrn('Collecteur ' + fw); }
+  } catch (e) {}
+}
+async function envoyerCmd(mac, octets) {
+  if (!cmdChar) { etat('Le collecteur n’est pas connecte : la commande ne peut pas partir.'); return false; }
+  var v = voitures[mac]; if (!v || v.idx == null) { etat('Voiture sans indice au collecteur : commande impossible.'); return false; }
+  var b = new Uint8Array(2 + octets.length); b[0] = ENV; b[1] = v.idx; b.set(octets, 2);
+  try { await cmdChar.writeValue(b); return true; } catch (e) { etat('Commande non partie : ' + e.message); return false; }
+}
+
+// ---- reception ----
+function notif(ev) {
+  var b = new Uint8Array(ev.target.value.buffer);
+  if (b.length < 4 || b[0] !== ENV) { jrn('Paquet hors enveloppe ignore (type 0x' + (b[0] || 0).toString(16) + ', ' + b.length + ' o)'); return; }
+  var idx = b[1], p = b.subarray(2);
+  if (p[0] === 0x09) { decodeIdent(idx, p); return; }
+  var mac = idxVersMac[idx];
+  if (!mac) { jrn('Tour recu pour l’indice ' + idx + ' avant son identite : en attente'); enAttente.push({ idx: idx, p: new Uint8Array(p) }); return; }
+  traiter(mac, p);
+}
+var enAttente = [];
+function traiter(mac, p) {
+  var v = voitures[mac]; v.vuMs = Date.now();
+  if (p[0] === 0x01) decodeTour(v, p);
+  else if (p[0] === 0x08) decodeValeurs(v, p);
+  else if (p[0] === 0x02) decodeTrace(v, p);
+  else jrn('Type inconnu 0x' + p[0].toString(16) + ' pour ' + v.nom);
+  sauver(); rendre();
+}
+function macTexte(a) { var s = []; for (var i = 0; i < 6; i++) s.push(('0' + a[i].toString(16)).slice(-2).toUpperCase()); return s.join(':'); }
+function voitureOuvrir(mac) {
+  if (!voitures[mac]) {
+    voitures[mac] = { mac: mac, idx: null, nom: 'CAR' + mac.slice(-5).replace(':', ''), num: 0, fw: '', vuMs: 0, laps: {}, traces: {} };
+    ordreVoitures.push(mac);
+    if (!vueMac) vueMac = mac;
+    jrn('Nouvelle voiture ' + mac);
+  }
+  return voitures[mac];
+}
+function decodeIdent(idx, p) {
+  if (p.length < 30) return;
+  var mac = macTexte(p.subarray(1, 7));
+  var v = voitureOuvrir(mac);
+  var nomNeuf = new TextDecoder().decode(p.subarray(8, 16)).replace(/\0+$/, '');
+  if (v.nom !== nomNeuf) jrn('Voiture ' + mac + ' se nomme ' + nomNeuf);
+  v.idx = idx; v.nom = nomNeuf || v.nom; v.num = p[7]; v.fw = new TextDecoder().decode(p.subarray(16, 28)).replace(/\0+$/, ''); v.vuMs = Date.now();
+  idxVersMac[idx] = mac;
+  // ce qui attendait cette identite
+  var reste = [];
+  enAttente.forEach(function (a) { if (a.idx === idx) traiter(mac, a.p); else reste.push(a); });
+  enAttente = reste;
+  sauver(); rendre();
+}
+function decodeTour(v, b) {
+  if (b.length < 8 + NB_CANAUX * 6 + 2) { jrn('Resume tronque (' + b.length + ' o) pour ' + v.nom); return; }
+  var dv = new DataView(b.buffer, b.byteOffset);
+  var num = dv.getUint16(1, true);
+  var lap = v.laps[num] || { num: num };
+  lap.dureeMs = dv.getUint32(3, true); lap.source = dv.getUint8(7);
+  var vals = [], off = 8;
+  for (var i = 0; i < NB_CANAUX; i++) { vals.push({ min: dv.getInt16(off, true), max: dv.getInt16(off + 2, true), avg: dv.getInt16(off + 4, true) }); off += 6; }
+  lap.vals = vals; lap.flags = dv.getUint16(off, true); off += 2;
+  if (b.length >= off + 10) { lap.oLat = dv.getInt32(off, true) / 1e7; lap.oLon = dv.getInt32(off + 4, true) / 1e7; lap.dMax = dv.getUint16(off + 8, true); }
+  if (!lap.recuMs) lap.recuMs = Date.now();
+  v.laps[num] = lap;
+  if (vueMac === v.mac) vueTour = num;
+  jrn(v.nom + ' : tour #' + num + ' ' + duree(lap.dureeMs));
+}
+function decodeValeurs(v, b) {
+  if (b.length < 60) return;
+  var dv = new DataView(b.buffer, b.byteOffset);
+  var num = dv.getUint16(1, true);
+  var pv = { lect: dv.getUint8(3), items: [] };
+  for (var k = 0; k < 4; k++) {
+    var it = { idx: dv.getUint8(4 + k), min: dv.getFloat32(8 + k * 12, true), max: dv.getFloat32(12 + k * 12, true), moy: dv.getFloat32(16 + k * 12, true), n: dv.getUint8(56 + k), nom: '', unite: '' };
+    if (b.length >= 164) {   // [PT2.1.31] les libelles suivent
+      it.nom = new TextDecoder().decode(b.subarray(60 + k * 26, 80 + k * 26)).replace(/\0.*$/, '');
+      it.unite = new TextDecoder().decode(b.subarray(80 + k * 26, 86 + k * 26)).replace(/\0.*$/, '');
+    }
+    pv.items.push(it);
+  }
+  var lap = v.laps[num] || { num: num, recuMs: Date.now() };
+  lap.pv = pv; v.laps[num] = lap;
+}
+function decodeTrace(v, b) {
+  if (b.length < 16) return;
+  var dv = new DataView(b.buffer, b.byteOffset);
+  var num = dv.getUint16(1, true), idx = b[3], nb = b[4], npts = b[5];
+  var t = v.traces[num] || { parts: [], nb: nb }; t.nb = nb;
+  var pts = [], off = 16;
+  for (var i = 0; i < npts && off + 5 <= b.length; i++) { pts.push({ dx: dv.getInt16(off, true), dy: dv.getInt16(off + 2, true), kmh: b[off + 4] }); off += 5; }
+  t.parts[idx] = pts; v.traces[num] = t;
+}
+function traceEntiere(t) { if (!t) return []; var out = []; for (var i = 0; i < t.nb; i++) if (t.parts[i]) out = out.concat(t.parts[i]); return out; }
+
+// ---- memoire locale : la page rechargee garde ses tours ----
+function sauver() {
+  try { localStorage.setItem('mt_voitures', JSON.stringify({ ordre: ordreVoitures, voitures: voitures })); } catch (e) {}
+}
+function charger() {
+  try {
+    var s = JSON.parse(localStorage.getItem('mt_voitures') || 'null');
+    if (s && s.voitures) { voitures = s.voitures; ordreVoitures = s.ordre || Object.keys(voitures); Object.keys(voitures).forEach(function (m) { voitures[m].idx = null; }); vueMac = ordreVoitures[0] || null; }
+  } catch (e) {}
+}
+
+// ---- rendu ----
+function duree(ms) { if (ms == null) return '—'; return (ms / 1000).toFixed(2) + ' s'; }
+function ecartTexte(d) { if (d == null) return '—'; return (d > 0 ? '+' : '') + (d / 1000).toFixed(2) + ' s'; }
+function lapsTries(v) { return Object.keys(v.laps).map(Number).sort(function (a, b) { return a - b; }).map(function (n) { return v.laps[n]; }); }
+function rendre() {
+  var tabs = document.getElementById('tabs'); tabs.innerHTML = '';
+  ordreVoitures.forEach(function (m) {
+    var v = voitures[m]; var portee = v.vuMs && (Date.now() - v.vuMs) < 30000;
+    var d = document.createElement('div'); d.className = 'tab' + (m === vueMac ? ' on' : '');
+    d.innerHTML = '<div class="nom"><span class="portee' + (portee ? ' ok' : '') + '"></span>' + v.nom + '</div><div class="sub">' + m + ' · ' + Object.keys(v.laps).length + ' tour(s)</div>';
+    d.onclick = function () { vueMac = m; vueTour = null; rendre(); };
+    tabs.appendChild(d);
+  });
+  document.getElementById('vide').style.display = ordreVoitures.length ? 'none' : '';
+  document.getElementById('voiture').style.display = vueMac ? '' : 'none';
+  if (!vueMac) return;
+  var v = voitures[vueMac];
+  document.getElementById('vNom').textContent = v.nom;
+  document.getElementById('vSub').textContent = 'n° ' + v.num + ' · ' + v.mac + (v.fw ? ' · ' + v.fw : '') + (v.vuMs ? ' · vu il y a ' + Math.round((Date.now() - v.vuMs) / 1000) + ' s' : '');
+  var laps = lapsTries(v);
+  var best = null; laps.forEach(function (l) { if (l.dureeMs != null && (!best || l.dureeMs < best.dureeMs)) best = l; });
+  if (vueTour == null && laps.length) vueTour = laps[laps.length - 1].num;
+  var tb = document.querySelector('#tours tbody'); tb.innerHTML = '';
+  laps.forEach(function (l, i) {
+    var prec = i > 0 ? laps[i - 1] : null;
+    var tr = document.createElement('tr'); tr.className = 'clic' + (l.num === vueTour ? ' sel' : '');
+    tr.innerHTML = '<td>#' + l.num + (best && l === best ? ' ★' : '') + '</td><td class="num">' + duree(l.dureeMs) + '</td><td class="num">'
+      + (prec && prec.dureeMs != null && l.dureeMs != null ? ecartTexte(l.dureeMs - prec.dureeMs) : '—') + '</td><td>' + source(l.source) + '</td><td class="num small">'
+      + (l.recuMs ? new Date(l.recuMs).toTimeString().slice(0, 8) : '') + '</td>';
+    tr.onclick = function () { vueTour = l.num; rendre(); };
+    tb.appendChild(tr);
+  });
+  var lap = vueTour != null ? v.laps[vueTour] : null;
+  document.getElementById('tourCard').style.display = lap ? '' : 'none';
+  if (!lap) return;
+  var i = laps.indexOf(lap), prec = i > 0 ? laps[i - 1] : null;
+  document.getElementById('tNum').textContent = '#' + lap.num;
+  document.getElementById('tTemps').textContent = duree(lap.dureeMs);
+  document.getElementById('tEcart').textContent = prec && prec.dureeMs != null && lap.dureeMs != null ? ecartTexte(lap.dureeMs - prec.dureeMs) : '—';
+  document.getElementById('tBest').textContent = best && lap.dureeMs != null ? (lap === best ? 'meilleur' : ecartTexte(lap.dureeMs - best.dureeMs)) : '—';
+  document.getElementById('tSrc').textContent = lap.dureeMs == null ? '⚠ Resume du tour pas encore recu (valeurs ou trace seulement).' : 'Chronometrage : ' + source(lap.source) + (lap.dMax ? ' · jusqu’a ' + lap.dMax + ' m de l’origine' : '');
+  // les 4 valeurs
+  var tv = document.getElementById('tVals');
+  if (lap.pv) {
+    var h = '<tr><th>Valeur</th><th class="num">Min</th><th class="num">Moy</th><th class="num">Max</th><th class="num">n</th><th></th></tr>';
+    lap.pv.items.forEach(function (it) {
+      if (it.idx === 255) return;
+      var nom = it.nom || ('canal ' + it.idx), dec = Math.abs(it.max) >= 100 ? 0 : 1;
+      h += '<tr><td>' + nom + '</td><td class="num">' + it.min.toFixed(dec) + '</td><td class="num"><b>' + it.moy.toFixed(dec) + '</b></td><td class="num">' + it.max.toFixed(dec) + '</td><td class="num small">' + it.n + '</td><td class="small">' + it.unite + '</td></tr>';
+    });
+    tv.innerHTML = h;
+  } else tv.innerHTML = '<tr><td class="small">Les 4 valeurs de ce tour ne sont pas encore recues.</td></tr>';
+  dessiner(v, lap);
+}
+function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, pic du signal' : s === 0 ? 'radio, 1er beacon' : '?'; }
+
+// ---- la carte ----
+function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
+function dessiner(v, lap) {
+  var c = document.getElementById('carte'), lg = document.getElementById('carteLeg');
+  var pts = traceEntiere(v.traces[lap.num]);
+  if (pts.length < 2) { c.style.display = 'none'; lg.textContent = 'Trace pas encore recue.'; proj = null; return; }
+  c.style.display = '';
+  var dpr = window.devicePixelRatio || 1, w = c.clientWidth || 600;
+  var h = Math.max(180, Math.min(460, Math.round(w * 0.72), Math.round(window.innerHeight * 0.55)));
+  c.style.height = h + 'px'; c.width = w * dpr; c.height = h * dpr;
+  var g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  var cle = v.mac + '/' + lap.num + '/' + w + 'x' + h;
+  if (satImg && satCle === cle) { g.globalAlpha = 0.85; g.drawImage(satImg, 0, 0, w, h); g.globalAlpha = 1; }
+  var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
+  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs), minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  var pad = 24, s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1), (h - 2 * pad) / Math.max(maxY - minY, 1));
+  var ox = (w - (maxX - minX) * s) / 2, oy = (h - (maxY - minY) * s) / 2;
+  function X(x) { return ox + (x - minX) * s; } function Y(y) { return h - (oy + (y - minY) * s); }
+  var vs = pts.map(function (p) { return p.kmh; }), vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
+  g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx), Y(pts[i - 1].dy)); g.lineTo(X(pts[i].dx), Y(pts[i].dy)); g.stroke(); }
+  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+  proj = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, w: w, h: h, s: s, lap: lap, cle: cle };
+  var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
+  lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '');
+  if (satVoulu && satCle !== cle) satCharger(lap, cle);
+}
+function satBascule() { satVoulu = document.getElementById('satOn').checked; try { localStorage.setItem('mt_sat', satVoulu ? '1' : '0'); } catch (e) {} rendre(); }
+function satCharger(lap, cle) {
+  if (!proj || lap.oLat == null || (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) { document.getElementById('satEtat').textContent = 'Position du tour inconnue : pas de fond.'; return; }
+  var p = proj, pad = 24, demiL = p.w / (2 * p.s), demiH = p.h / (2 * p.s), cx = (p.minX + p.maxX) / 2, cy = (p.minY + p.maxY) / 2;
+  var R = 6371000, rad = Math.PI / 180;
+  function lat(y) { return lap.oLat + (y / R) / rad; } function lon(x) { return lap.oLon + (x / (R * Math.cos(lap.oLat * rad))) / rad; }
+  function d6(v) { return v.toFixed(6); }
+  var W = Math.max(64, Math.min(1024, Math.round(p.w))), H = Math.max(64, Math.min(1024, Math.round(p.h)));
+  var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=' + d6(lon(cx - demiL)) + ',' + d6(lat(cy - demiH)) + ',' + d6(lon(cx + demiL)) + ',' + d6(lat(cy + demiH)) + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + H + '&format=png&transparent=false&f=image';
+  document.getElementById('satEtat').textContent = 'Chargement du fond...';
+  var im = new Image(); im.crossOrigin = 'anonymous';
+  im.onload = function () { satImg = im; satCle = cle; document.getElementById('satEtat').textContent = ''; rendre(); };
+  im.onerror = function () { satImg = null; satCle = ''; document.getElementById('satEtat').textContent = 'Fond satellite non recu (reseau ?).'; };
+  im.src = url;
+}
+
+// ---- commandes ----
+async function ligneRefaire() {
+  if (!vueMac) return;
+  if (!confirm('Refaire la ligne virtuelle de ' + voitures[vueMac].nom + ' ? Le module oublie sa ligne et la recalibre aux 2 prochains passages.')) return;
+  if (await envoyerCmd(vueMac, [0x03])) etat('Ligne de ' + voitures[vueMac].nom + ' a refaire : commande partie.');
+}
+async function toursEffacer() {
+  if (!vueMac) return;
+  var v = voitures[vueMac];
+  if (!confirm('Effacer les ' + Object.keys(v.laps).length + ' tour(s) de ' + v.nom + ' sur cette page, et remettre son compteur a zero ?')) return;
+  v.laps = {}; v.traces = {}; vueTour = null; sauver(); rendre();
+  if (await envoyerCmd(vueMac, [0x05])) etat('Tours de ' + v.nom + ' remis a zero.');
+}
+
+// ---- mise a jour automatique de la page ----
+// Le service worker recharge la page des qu'une nouvelle version est
+// installee (controllerchange), et on lui demande de verifier toutes les
+// minutes. Les donnees sont en memoire locale : rien n'est perdu.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js').then(function (reg) {
+    setInterval(function () { reg.update().catch(function () {}); }, 60000);
+    reg.addEventListener('updatefound', function () { document.getElementById('majBadge').style.display = ''; });
+  }).catch(function () {});
+  var recharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () { if (recharge) return; recharge = true; jrn('Nouvelle version : rechargement.'); setTimeout(function () { location.reload(); }, 500); });
+}
+
+document.getElementById('pageVer').textContent = 'page ' + PAGE_VER;
+charger();
+try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById('satOn').checked = satVoulu; } catch (e) {}
+rendre();
+setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
+jrn('Page ' + PAGE_VER + ' prete.');
+</script>
+</body>
+</html>
