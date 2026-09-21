@@ -98,7 +98,7 @@
       <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
       <label class="small"><input type="radio" name="orient" value="max" onchange="orientChoisir('max')"> Maximiser le tracé</label>
       <label class="small"><input type="radio" name="orient" value="nord" onchange="orientChoisir('nord')"> Nord en haut</label>
-      <button class="btn sec" style="padding:4px 10px" id="btnVerrou" onclick="verrouBascule()">🔓 Vue libre</button>
+      <button class="btn sec" style="padding:4px 10px;background:var(--ok);color:#fff" id="btnVerrou" onclick="verrouBascule()">🔒 Vue verrouillée</button>
       <button class="btn sec" style="padding:4px 10px" onclick="carteRecadrer()">Recadrer</button>
       <span class="small" id="satEtat"></span>
     </div>
@@ -137,7 +137,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v12';
+var PAGE_VER = 'MT v13';
 // [v11] l'interrupteur des partielles : les montrer (tableau + bornes sur la carte) ou non
 var partiellesOn = true;
 function partiellesBascule() { partiellesOn = document.getElementById('partOn').checked; try { localStorage.setItem('mt_part', partiellesOn ? '1' : '0'); } catch (e) {} rendre(); }
@@ -381,7 +381,7 @@ function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, p
 // rotation, deplacement au doigt. Le fond satellite est demande en carre,
 // centre sur la vue, assez grand pour couvrir toute rotation, et dessine
 // avec la meme transformation que le trace.
-var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0, verrou: false };
+var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0, verrou: true };   // [v13] la page ouvre en vue verrouillee
 var pointVu = null;   // [v5] l'indice du point du trace touche (vue verrouillee), ou null
 // [v5] LE VERROU : la vue ne bouge plus (ni zoom, ni rotation, ni deplacement) ; un doigt
 // sur le trace montre la vitesse a ce point. Sans verrou, le doigt deplace la carte.
