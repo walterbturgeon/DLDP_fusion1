@@ -123,7 +123,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v2';
+var PAGE_VER = 'MT v3';
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -361,6 +361,16 @@ function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, p
 // centre sur la vue, assez grand pour couvrir toute rotation, et dessine
 // avec la meme transformation que le trace.
 var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0 };
+// [v3] le filigrane : le logo TRACKLOGICS en bas a gauche de la carte, sur un fond gris semi-transparent
+var logoImg = new Image(); var logoPret = false; logoImg.onload = function () { logoPret = true; if (vueMac && vueTour != null) rendre(); }; logoImg.src = '../logo-tracklogics.svg';
+function filigrane(g, w, h) {
+  var L = 34, x = 10, y = h - L - 10, texte = 'TRACKLOGICS';
+  g.save(); g.font = 'bold 13px system-ui'; var tw = g.measureText(texte).width;
+  g.fillStyle = 'rgba(110,110,110,0.55)'; g.beginPath(); g.roundRect(x - 6, y - 6, L + tw + 26, L + 12, 8); g.fill();
+  if (logoPret) g.drawImage(logoImg, x, y, L, L);
+  g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(texte, x + L + 8, y + L / 2);
+  g.restore();
+}
 var satDemandeMs = 0;
 function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
 function orientChoisir(m) { carte.mode = m; carte.zoom = 1; carte.rot = 0; carte.panX = carte.panY = 0; try { localStorage.setItem('mt_orient', m); } catch (e) {} rendre(); }
@@ -412,6 +422,7 @@ function dessiner(v, lap) {
   g.fillStyle = '#ff1fd0'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
   g.beginPath(); g.moveTo(0, -14); g.lineTo(6, 6); g.lineTo(0, 2); g.lineTo(-6, 6); g.closePath(); g.fill(); g.stroke();
   g.restore(); g.fillStyle = '#ff1fd0'; g.font = 'bold 11px system-ui'; g.fillText('N', w - 26, 44);
+  filigrane(g, w, h);   // [v3]
   lap.macTour = v.mac + '/' + lap.num;
   proj = { cx: cx, cy: cy, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
