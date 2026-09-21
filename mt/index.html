@@ -128,7 +128,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v8';
+var PAGE_VER = 'MT v9';
 // [v8] les details techniques (MAC, firmware) sont masques par defaut ; le bouton en bas de page les montre
 var details = false;
 function detailsBascule() { details = !details; try { localStorage.setItem('mt_details', details ? '1' : '0'); } catch (e) {} document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails'; rendre(); }
@@ -428,9 +428,13 @@ function dessiner(v, lap) {
   pts.forEach(function (p) { var x = p.dx - cx, y = p.dy - cy; var u = x * cos - y * sin, vv = x * sin + y * cos; if (u < minU) minU = u; if (u > maxU) maxU = u; if (vv < minV) minV = vv; if (vv > maxV) maxV = vv; });
   var pad = 24, s0 = Math.min((w - 2 * pad) / Math.max(maxU - minU, 1), (h - 2 * pad) / Math.max(maxV - minV, 1));
   var s = s0 * carte.zoom;
+  // [v9] ⚠ ON CENTRE LA BOITE TOURNEE, PAS LE CENTRE TOURNE. Le centre de la boite des points non
+  // tournes, une fois tourne, n'est PAS le centre de la boite des points tournes : le trace se
+  // decalait et sortait du canevas d'un cote (tour #903 du 21 sept. 2026, coupe a droite).
+  var uc = (minU + maxU) / 2, vc = (minV + maxV) / 2;
   // metres -> ecran : centre du trace au centre du canevas, rotation theta, y vers le haut, puis le deplacement au doigt
-  function X(x, y) { var u = (x - cx) * cos - (y - cy) * sin; return w / 2 + u * s + carte.panX; }
-  function Y(x, y) { var vv = (x - cx) * sin + (y - cy) * cos; return h / 2 - vv * s + carte.panY; }
+  function X(x, y) { var u = (x - cx) * cos - (y - cy) * sin; return w / 2 + (u - uc) * s + carte.panX; }
+  function Y(x, y) { var vv = (x - cx) * sin + (y - cy) * cos; return h / 2 - (vv - vc) * s + carte.panY; }
   var cle = v.mac + '/' + lap.num + '/' + w + 'x' + h + '/' + Math.round(s * 1000);
   if (satImg && satImg.cleTour === v.mac + '/' + lap.num) {
     // le carre satellite : son centre est un point connu en metres (im.vx, im.vy) ; on le pose la ou ce
@@ -464,7 +468,7 @@ function dessiner(v, lap) {
     g.restore();
   }
   lap.macTour = v.mac + '/' + lap.num;
-  proj = { cx: cx, cy: cy, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle, X: X, Y: Y, pts: pts };
+  proj = { cx: cx, cy: cy, uc: uc, vc: vc, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle, X: X, Y: Y, pts: pts };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
   lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
   if (satVoulu && satCle !== cle) satPlanifier(lap, cle);
@@ -480,7 +484,7 @@ function satCharger(lap, cle) {
   var p = proj, R = 6371000, rad = Math.PI / 180;
   // le centre de la VUE en metres : le centre du canevas, ramene dans le repere du tour
   var cos = Math.cos(p.theta), sin = Math.sin(p.theta);
-  var u = -carte.panX / p.s, vv = carte.panY / p.s;         // decalage ecran -> repere tourne (y inverse)
+  var u = -carte.panX / p.s + p.uc, vv = carte.panY / p.s + p.vc;   // centre du canevas -> repere tourne (y inverse), boite tournee centree [v9]
   var vx = p.cx + u * cos + vv * sin, vy = p.cy - u * sin + vv * cos;
   var D = Math.sqrt(p.w * p.w + p.h * p.h), demi = D / (2 * p.s);   // demi-cote du carre, en metres
   function lat(y) { return lap.oLat + (y / R) / rad; } function lon(x) { return lap.oLon + (x / (R * Math.cos(lap.oLat * rad))) / rad; }

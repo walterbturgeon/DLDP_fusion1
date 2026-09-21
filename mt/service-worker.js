@@ -4,7 +4,7 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v8';   // v8 : MAC masquees, bouton Details
+const CACHE = PREFIX + 'v9';   // v9 : cadrage centre sur la boite tournee (tour coupe a droite)
 const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg'];
 
 self.addEventListener('install', (ev) => {
