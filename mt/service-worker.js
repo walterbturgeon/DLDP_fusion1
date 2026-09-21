@@ -4,7 +4,7 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v4';   // v4 : le vrai logo TRACLOGICS (JPEG) en filigrane
+const CACHE = PREFIX + 'v5';   // v5 : verrou de la vue, vitesse au doigt sur le trace
 const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg'];
 
 self.addEventListener('install', (ev) => {

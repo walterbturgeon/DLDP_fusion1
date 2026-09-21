@@ -89,12 +89,13 @@
       <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
       <label class="small"><input type="radio" name="orient" value="max" onchange="orientChoisir('max')"> Maximiser le tracé</label>
       <label class="small"><input type="radio" name="orient" value="nord" onchange="orientChoisir('nord')"> Nord en haut</label>
+      <button class="btn sec" style="padding:4px 10px" id="btnVerrou" onclick="verrouBascule()">🔓 Vue libre</button>
       <button class="btn sec" style="padding:4px 10px" onclick="carteRecadrer()">Recadrer</button>
       <span class="small" id="satEtat"></span>
     </div>
     <canvas id="carte" height="10" style="touch-action:none"></canvas>
     <div class="small" id="carteLeg"></div>
-    <div class="small">Un doigt : déplacer. Deux doigts : zoomer et tourner. Double toucher : recadrer.</div>
+    <div class="small">Vue libre : un doigt déplace, deux doigts zooment et tournent, double toucher recadre. Vue verrouillée : un doigt sur le tracé montre la vitesse à ce point.</div>
   </div>
 
   <div class="card">
@@ -123,7 +124,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v4';
+var PAGE_VER = 'MT v5';
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -360,7 +361,16 @@ function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, p
 // rotation, deplacement au doigt. Le fond satellite est demande en carre,
 // centre sur la vue, assez grand pour couvrir toute rotation, et dessine
 // avec la meme transformation que le trace.
-var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0 };
+var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0, verrou: false };
+var pointVu = null;   // [v5] l'indice du point du trace touche (vue verrouillee), ou null
+// [v5] LE VERROU : la vue ne bouge plus (ni zoom, ni rotation, ni deplacement) ; un doigt
+// sur le trace montre la vitesse a ce point. Sans verrou, le doigt deplace la carte.
+function verrouBascule() {
+  carte.verrou = !carte.verrou; pointVu = null;
+  var b = document.getElementById('btnVerrou'); b.textContent = carte.verrou ? '🔒 Vue verrouillée' : '🔓 Vue libre';
+  b.style.background = carte.verrou ? 'var(--ok)' : ''; b.style.color = carte.verrou ? '#fff' : '';
+  rendre();
+}
 // [v4] le filigrane : le logo TRACLOGICS (la banniere JPEG du depot, fond blanc rendu
 // transparent au chargement) en bas de la carte, sur un fond gris semi-transparent.
 var logoImg = new Image(); var logoCanvas = null;
@@ -435,8 +445,19 @@ function dessiner(v, lap) {
   g.beginPath(); g.moveTo(0, -14); g.lineTo(6, 6); g.lineTo(0, 2); g.lineTo(-6, 6); g.closePath(); g.fill(); g.stroke();
   g.restore(); g.fillStyle = '#ff1fd0'; g.font = 'bold 11px system-ui'; g.fillText('N', w - 26, 44);
   filigrane(g, w, h);   // [v3]
+  // [v5] le point touche : un cercle et sa vitesse
+  if (carte.verrou && pointVu != null && pointVu < pts.length) {
+    var pv = pts[pointVu], px = X(pv.dx, pv.dy), py = Y(pv.dx, pv.dy);
+    g.save();
+    g.beginPath(); g.arc(px, py, 9, 0, Math.PI * 2); g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
+    var txt = pv.kmh + ' km/h'; g.font = 'bold 14px system-ui'; var tw = g.measureText(txt).width;
+    var bx = Math.min(w - tw - 16, Math.max(4, px - tw / 2 - 6)), by = py - 34 < 4 ? py + 14 : py - 34;
+    g.fillStyle = 'rgba(0,0,0,0.75)'; g.beginPath(); g.roundRect(bx, by, tw + 12, 22, 6); g.fill();
+    g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(txt, bx + 6, by + 11);
+    g.restore();
+  }
   lap.macTour = v.mac + '/' + lap.num;
-  proj = { cx: cx, cy: cy, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle };
+  proj = { cx: cx, cy: cy, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle, X: X, Y: Y, pts: pts };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
   lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
   if (satVoulu && satCle !== cle) satPlanifier(lap, cle);
@@ -473,12 +494,22 @@ function satCharger(lap, cle) {
   c.addEventListener('pointerdown', function (e) {
     c.setPointerCapture(e.pointerId); doigts[e.pointerId] = { x: e.clientX, y: e.clientY };
     var l = liste();
+    if (carte.verrou) {
+      // vue verrouillee : le doigt designe le point du trace le plus proche (30 px au plus)
+      if (proj && proj.pts) {
+        var r = c.getBoundingClientRect(), fx = e.clientX - r.left, fy = e.clientY - r.top, best = -1, bestD = 1e9;
+        for (var i = 0; i < proj.pts.length; i++) { var dx = proj.X(proj.pts[i].dx, proj.pts[i].dy) - fx, dy = proj.Y(proj.pts[i].dx, proj.pts[i].dy) - fy; var d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = i; } }
+        pointVu = Math.sqrt(bestD) <= 30 ? best : null;
+        if (vueMac && vueTour != null) dessiner(voitures[vueMac], voitures[vueMac].laps[vueTour]);
+      }
+      e.preventDefault(); return;
+    }
     if (l.length === 1) { var t = Date.now(); if (t - dernierTap < 350) { carteRecadrer(); dernierTap = 0; } else dernierTap = t; dep = { x: e.clientX, y: e.clientY, panX: carte.panX, panY: carte.panY }; }
     if (l.length === 2) dep = { d: Math.hypot(l[1].x - l[0].x, l[1].y - l[0].y), a: Math.atan2(l[1].y - l[0].y, l[1].x - l[0].x), mx: (l[0].x + l[1].x) / 2, my: (l[0].y + l[1].y) / 2, zoom: carte.zoom, rot: carte.rot, panX: carte.panX, panY: carte.panY };
     e.preventDefault();
   });
   c.addEventListener('pointermove', function (e) {
-    if (!doigts[e.pointerId]) return;
+    if (!doigts[e.pointerId] || carte.verrou) return;
     doigts[e.pointerId] = { x: e.clientX, y: e.clientY };
     var l = liste(); if (!dep) return;
     if (l.length === 1 && dep.panX != null && dep.d == null) { carte.panX = dep.panX + (e.clientX - dep.x); carte.panY = dep.panY + (e.clientY - dep.y); }
@@ -493,7 +524,7 @@ function satCharger(lap, cle) {
   });
   function fin(e) { delete doigts[e.pointerId]; var l = liste(); dep = l.length === 1 ? { x: l[0].x, y: l[0].y, panX: carte.panX, panY: carte.panY } : null; }
   c.addEventListener('pointerup', fin); c.addEventListener('pointercancel', fin); c.addEventListener('pointerout', fin);
-  c.addEventListener('wheel', function (e) { carte.zoom = Math.max(0.3, Math.min(20, carte.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); if (vueMac && vueTour != null) dessiner(voitures[vueMac], voitures[vueMac].laps[vueTour]); e.preventDefault(); }, { passive: false });
+  c.addEventListener('wheel', function (e) { if (carte.verrou) return; carte.zoom = Math.max(0.3, Math.min(20, carte.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); if (vueMac && vueTour != null) dessiner(voitures[vueMac], voitures[vueMac].laps[vueTour]); e.preventDefault(); }, { passive: false });
 })();
 
 // ---- export CSV ----
