@@ -124,7 +124,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v5';
+var PAGE_VER = 'MT v6';
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -387,7 +387,7 @@ logoImg.onload = function () {
 logoImg.src = 'logo-traclogics.jpg';
 function filigrane(g, w, h) {
   if (!logoCanvas) return;
-  var lw = Math.min(w * 0.42, 320), lh = lw * logoCanvas.height / logoCanvas.width, x = (w - lw) / 2, y = h - lh - 10;
+  var lw = Math.min(w * 0.28, 214), lh = lw * logoCanvas.height / logoCanvas.width, x = 14, y = h - lh - 10;   // [v6] un tiers plus petit, a gauche
   g.save();
   g.fillStyle = 'rgba(120,120,120,0.55)'; g.beginPath(); g.roundRect(x - 10, y - 6, lw + 20, lh + 12, 10); g.fill();
   g.globalAlpha = 0.95; g.drawImage(logoCanvas, x, y, lw, lh);
