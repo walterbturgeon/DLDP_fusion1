@@ -84,6 +84,7 @@
       <div><div class="small">Écart vs meilleur</div><div class="grand" id="tBest"></div></div>
     </div>
     <div class="small" id="tSrc" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:8px"><label class="small">Comparer à <select id="compSel" onchange="compChoisir()"><option value="meilleur">meilleur tour</option><option value="precedent">tour précédent</option><option value="aucun">rien (vitesse)</option></select></label> <span class="small" id="compInfo"></span></div>
     <div class="row" style="margin-top:10px"><label class="small"><input type="checkbox" id="valOn" checked onchange="valeursBascule()"> Valeurs du tour (p1 à p4)</label></div>
     <table id="tVals" style="margin-top:4px"></table>
     <div id="circBloc" style="margin-top:12px;display:none">
@@ -138,7 +139,38 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v14';
+var PAGE_VER = 'MT v15';
+// [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
+// meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
+// n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
+// plus vite que la reference, rouge : moins vite, gris : pareil). Dans les
+// partielles, une colonne donne l'ecart de temps par section vs la reference, et
+// une ligne resume ou l'on gagne et ou l'on perd. « Le meme endroit » = la meme
+// distance parcourue depuis la ligne, ce qui marche avec ou sans circuit reconnu.
+var compMode = 'meilleur';   // 'aucun' | 'meilleur' | 'precedent'
+var compRef = null;          // le tour de reference du rendu courant, ou null
+function compChoisir() { compMode = document.getElementById('compSel').value; try { localStorage.setItem('mt_comp', compMode); } catch (e) {} rendre(); }
+function compReference(v, lap) {
+  if (compMode === 'aucun') return null;
+  var laps = lapsTries(v).filter(function (l) { return l.dureeMs != null && traceEntiere(v.traces[l.num]).length >= 10; });
+  var i = laps.indexOf(lap);
+  if (compMode === 'precedent') { for (var k = (i >= 0 ? i : laps.length) - 1; k >= 0; k--) if (laps[k] !== lap) return laps[k]; return null; }
+  var best = null; laps.forEach(function (l) { if (l !== lap && (!best || l.dureeMs < best.dureeMs)) best = l; });
+  return best;
+}
+// la distance cumulee de chaque point d'une trace
+function distCumul(pts) { var d = [0]; for (var i = 1; i < pts.length; i++) d.push(d[i - 1] + Math.hypot(pts[i].dx - pts[i - 1].dx, pts[i].dy - pts[i - 1].dy)); return d; }
+// la vitesse de la reference a une distance donnee (interpolation lineaire)
+function vitesseA(ptsRef, dRef, d) {
+  if (d <= 0) return ptsRef[0].kmh; var n = dRef.length; if (d >= dRef[n - 1]) return ptsRef[n - 1].kmh;
+  var lo = 0, hi = n - 1; while (hi - lo > 1) { var m = (lo + hi) >> 1; if (dRef[m] <= d) lo = m; else hi = m; }
+  var f = (d - dRef[lo]) / Math.max(dRef[hi] - dRef[lo], 1e-6); return ptsRef[lo].kmh + f * (ptsRef[hi].kmh - ptsRef[lo].kmh);
+}
+function couleurDelta(dv) {   // -10..+10 km/h -> rouge..gris..vert
+  var u = Math.max(-1, Math.min(1, dv / 10)), a = Math.abs(u);
+  if (a < 0.08) return 'rgb(190,190,190)';
+  return u > 0 ? 'hsl(140, 85%, ' + (60 - 25 * a) + '%)' : 'hsl(0, 85%, ' + (62 - 22 * a) + '%)';
+}
 // [v14] l'interrupteur des 4 valeurs (p1..p4) du tour
 var valeursOn = true;
 function valeursBascule() { valeursOn = document.getElementById('valOn').checked; try { localStorage.setItem('mt_val', valeursOn ? '1' : '0'); } catch (e) {} rendre(); }
@@ -481,8 +513,17 @@ function dessiner(v, lap) {
     }
   }
   var vs = pts.map(function (p) { return p.kmh; }), vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
+  // [v15] la reference : delta de vitesse a la meme distance parcourue
+  compRef = compReference(v, lap); var dvs = null;
+  if (compRef) {
+    var ptsRef = traceEntiere(v.traces[compRef.num]), dRef = distCumul(ptsRef), dCur = distCumul(pts);
+    dvs = pts.map(function (p, i) { return p.kmh - vitesseA(ptsRef, dRef, dCur[i]); });
+  }
   g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
-  for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx, pts[i - 1].dy), Y(pts[i - 1].dx, pts[i - 1].dy)); g.lineTo(X(pts[i].dx, pts[i].dy), Y(pts[i].dx, pts[i].dy)); g.stroke(); }
+  for (var i = 1; i < pts.length; i++) {
+    g.strokeStyle = dvs ? couleurDelta((dvs[i - 1] + dvs[i]) / 2) : couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax);
+    g.beginPath(); g.moveTo(X(pts[i - 1].dx, pts[i - 1].dy), Y(pts[i - 1].dx, pts[i - 1].dy)); g.lineTo(X(pts[i].dx, pts[i].dy), Y(pts[i].dx, pts[i].dy)); g.stroke();
+  }
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx, pts[0].dy), Y(pts[0].dx, pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
   // [v10] l'axe du circuit reconnu (fin, blanc) et les bornes des partielles (traits magenta)
   if (circVue && circVue.axe && partiellesOn) {
@@ -507,7 +548,7 @@ function dessiner(v, lap) {
     var pv = pts[pointVu], px = X(pv.dx, pv.dy), py = Y(pv.dx, pv.dy);
     g.save();
     g.beginPath(); g.arc(px, py, 9, 0, Math.PI * 2); g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke();
-    var txt = pv.kmh + ' km/h'; g.font = 'bold 14px system-ui'; var tw = g.measureText(txt).width;
+    var txt = pv.kmh + ' km/h' + (dvs ? ' (' + (dvs[pointVu] >= 0 ? '+' : '') + dvs[pointVu].toFixed(0) + ')' : ''); g.font = 'bold 14px system-ui'; var tw = g.measureText(txt).width;
     var bx = Math.min(w - tw - 16, Math.max(4, px - tw / 2 - 6)), by = py - 34 < 4 ? py + 14 : py - 34;
     g.fillStyle = 'rgba(0,0,0,0.75)'; g.beginPath(); g.roundRect(bx, by, tw + 12, 22, 6); g.fill();
     g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(txt, bx + 6, by + 11);
@@ -515,7 +556,7 @@ function dessiner(v, lap) {
   }
   proj = { cx: cx, cy: cy, uc: uc, vc: vc, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle, X: X, Y: Y, pts: pts };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
-  lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
+  lg.textContent = (dvs ? 'Delta de vitesse vs #' + compRef.num + ' : vert = plus vite, rouge = moins vite, gris = pareil (±10 km/h). ' : 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ') + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
   if (satVoulu && cle && !satOk) satPlanifier(lap, cle);
 }
 function satBascule() { satVoulu = document.getElementById('satOn').checked; try { localStorage.setItem('mt_sat', satVoulu ? '1' : '0'); } catch (e) {} rendre(); }
@@ -711,6 +752,9 @@ function secteursChoisir() { secteursN = +document.getElementById('circN').value
 // le rendu du bloc, appele par rendre() ; rend aussi ce qu'il faut a la carte (bornes en metres du repere du tour)
 function circuitRendre(v, lap) {
   var bloc = document.getElementById('circBloc'); bloc.style.display = 'none'; circVue = null;
+  { var ref0 = compReference(v, lap), ci0 = document.getElementById('compInfo');
+    if (!ref0) ci0.textContent = compMode === 'aucun' ? '' : (compMode === 'precedent' ? 'pas de tour précédent avec trace' : 'pas d\u2019autre tour avec trace à comparer');
+    else ci0.innerHTML = 'vs <b>#' + ref0.num + '</b> (' + duree(ref0.dureeMs) + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref0.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref0.dureeMs) + '</b>' : ''); }
   if (!circuits) { if (circErreur) document.getElementById('circNote').textContent = 'Base de circuits : ' + circErreur; return; }
   var pts = traceEntiere(v.traces[lap.num]), m = circuitPourTour(lap, pts);
   if (!m) return;
@@ -727,13 +771,23 @@ function circuitRendre(v, lap) {
     if (!meilleurs) { meilleurs = r2.sect.slice(); meilleurNum = {}; r2.sect.forEach(function (x, i) { meilleurNum[i] = l.num; }); }
     else r2.sect.forEach(function (x, i) { if (x != null && (meilleurs[i] == null || x < meilleurs[i])) { meilleurs[i] = x; meilleurNum[i] = l.num; } });
   });
-  var h = '<tr><th>Partielle</th><th class="num">Temps</th><th class="num">Écart vs meilleure</th><th class="small">Meilleure</th></tr>';
+  // [v15] les partielles du tour de reference, pour la colonne « vs #ref »
+  var ref = compReference(v, lap), refSect = null;
+  if (ref) { var pr = traceEntiere(v.traces[ref.num]), mr = circuitPourTour(ref, pr); if (mr && mr.c.id === m.c.id) { var rr = secteursCalculer(ref, pr, mr, secteursN, v.traces[ref.num].intervalMs); if (rr) refSect = rr.sect; } }
+  var h = '<tr><th>Partielle</th><th class="num">Temps</th>' + (ref ? '<th class="num">vs #' + ref.num + '</th>' : '') + '<th class="num">Écart vs meilleure</th><th class="small">Meilleure</th></tr>';
+  var gagne = [], perd = [];
   res.sect.forEach(function (x, i) {
-    var mb = meilleurs ? meilleurs[i] : null;
-    h += '<tr><td>P' + (i + 1) + ' <span class="small">(' + Math.round(i * res.L / secteursN) + '–' + Math.round((i + 1) * res.L / secteursN) + ' m)</span></td><td class="num"><b>' + (x != null ? (x / 1000).toFixed(2) + ' s' : '\u2014') + '</b></td><td class="num">'
-      + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + meilleurNum[i] : '') + '</td></tr>';
+    var mb = meilleurs ? meilleurs[i] : null, rs = refSect ? refSect[i] : null, dr = (x != null && rs != null) ? x - rs : null;
+    if (dr != null) (dr <= 0 ? gagne : perd).push('P' + (i + 1));
+    h += '<tr><td>P' + (i + 1) + ' <span class="small">(' + Math.round(i * res.L / secteursN) + '–' + Math.round((i + 1) * res.L / secteursN) + ' m)</span></td><td class="num"><b>' + (x != null ? (x / 1000).toFixed(2) + ' s' : '\u2014') + '</b></td>'
+      + (ref ? '<td class="num">' + (dr != null ? '<span style="color:' + (dr <= 0 ? 'var(--ok)' : 'var(--warn)') + ';font-weight:600">' + ecartTexte(dr) + '</span>' : '\u2014') + '</td>' : '')
+      + '<td class="num">' + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + meilleurNum[i] : '') + '</td></tr>';
   });
   document.getElementById('tSect').innerHTML = h;
+  var ci = document.getElementById('compInfo');
+  if (!ref) ci.textContent = compMode === 'aucun' ? '' : (compMode === 'precedent' ? 'pas de tour précédent avec trace' : 'pas d\u2019autre tour avec trace à comparer');
+  else ci.innerHTML = 'vs <b>#' + ref.num + '</b> (' + duree(ref.dureeMs) + ', ' + (compMode === 'meilleur' ? 'meilleur' : 'précédent') + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref.dureeMs) + '</b>' : '')
+      + (refSect ? ' · gagne ' + (gagne.length ? gagne.join(' ') : '\u2014') + ', perd ' + (perd.length ? perd.join(' ') : '\u2014') : '');
   document.getElementById('partBloc').style.display = partiellesOn ? '' : 'none'; document.getElementById('circNLabel').style.display = partiellesOn ? '' : 'none';
   document.getElementById('circNote').textContent = 'Bornes à ' + Math.round(res.L / secteursN) + ' m depuis la ligne du tour, dans le sens de roulage (' + (res.sensPos ? m.c.sens : (m.c.sens === 'horaire' ? 'antihoraire' : 'horaire')) + '). Précision : celle de la trace (un point / ' + tr.intervalMs + ' ms).';
   // les bornes pour la carte : abscisse -> point de l'axe -> repere du tour
@@ -780,7 +834,7 @@ try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById
 document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
 try { details = localStorage.getItem('mt_details') === '1'; } catch (e) {}
 document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails';
-try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; valeursOn = localStorage.getItem('mt_val') !== '0'; } catch (e) {} document.getElementById('valOn').checked = valeursOn; document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
+try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; valeursOn = localStorage.getItem('mt_val') !== '0'; compMode = localStorage.getItem('mt_comp') || 'meilleur'; } catch (e) {} document.getElementById('valOn').checked = valeursOn; document.getElementById('compSel').value = compMode; document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
 circuitsCharger();
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
