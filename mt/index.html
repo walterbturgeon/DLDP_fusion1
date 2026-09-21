@@ -137,7 +137,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v11';
+var PAGE_VER = 'MT v12';
 // [v11] l'interrupteur des partielles : les montrer (tableau + bornes sur la carte) ou non
 var partiellesOn = true;
 function partiellesBascule() { partiellesOn = document.getElementById('partOn').checked; try { localStorage.setItem('mt_part', partiellesOn ? '1' : '0'); } catch (e) {} rendre(); }
@@ -448,16 +448,33 @@ function dessiner(v, lap) {
   // metres -> ecran : centre du trace au centre du canevas, rotation theta, y vers le haut, puis le deplacement au doigt
   function X(x, y) { var u = (x - cx) * cos - (y - cy) * sin; return w / 2 + (u - uc) * s + carte.panX; }
   function Y(x, y) { var vv = (x - cx) * sin + (y - cy) * cos; return h / 2 - (vv - vc) * s + carte.panY; }
-  var cle = v.mac + '/' + lap.num + '/' + w + 'x' + h + '/' + Math.round(s * 1000);
-  if (satImg && satImg.cleTour === v.mac + '/' + lap.num) {
-    // le carre satellite : son centre est un point connu en metres (im.vx, im.vy) ; on le pose la ou ce
-    // point tombe MAINTENANT, tourne comme le trace, a l'echelle du moment. Entre deux images (pendant un
-    // geste), il suit donc le trace, un peu flou ; la bonne image arrive 600 ms apres la fin du geste.
-    g.save(); g.globalAlpha = 0.85;
-    g.translate(X(satImg.vx, satImg.vy), Y(satImg.vx, satImg.vy)); g.rotate(-theta);
-    var Dn = satImg.D * (s / satImg.s);
-    g.drawImage(satImg, -Dn / 2, -Dn / 2, Dn, Dn);
-    g.restore(); g.globalAlpha = 1;
+  // [v12] LE FOND EST GEOGRAPHIQUE. L'image garde le lat/lon de son centre et son echelle ; on la
+  // pose la ou ce point tombe dans le repere du tour AFFICHE, quel que soit le tour. Deux tours de la
+  // meme voiture (ou de deux voitures) sur la meme piste partagent donc la meme image : pas de nouveau
+  // chargement quand on change de tour. On ne recharge que si le centre de la vue s'est eloigne de plus
+  // d'un quart d'image, ou si l'echelle a change de plus de 25 %.
+  var R0 = 6371000, rad0 = Math.PI / 180;
+  var cle = null, satOk = false;
+  if (lap.oLat != null && !(Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) {
+    // le centre de la vue, en metres du tour puis en lat/lon
+    var u0 = -carte.panX / s + uc, v0 = carte.panY / s + vc;
+    var vx0 = cx + u0 * cos + v0 * sin, vy0 = cy - u0 * sin + v0 * cos;
+    var vLat = lap.oLat + (vy0 / R0) / rad0, vLon = lap.oLon + (vx0 / (R0 * Math.cos(lap.oLat * rad0))) / rad0;
+    var D0 = Math.sqrt(w * w + h * h);
+    cle = { lat: vLat, lon: vLon, s: s, D: D0, w: w, h: h };
+    if (satImg) {
+      var ddy = (satImg.lat - vLat) * rad0 * R0, ddx = (satImg.lon - vLon) * rad0 * R0 * Math.cos(vLat * rad0);
+      satOk = Math.hypot(ddx, ddy) * s < D0 / 4 && Math.abs(s / satImg.s - 1) < 0.25 && Math.abs(satImg.D - D0) < 2;
+    }
+    if (satImg) {
+      // l'image se pose sur son centre geographique, ramene dans le repere de CE tour
+      var ix = (satImg.lon - lap.oLon) * rad0 * R0 * Math.cos(lap.oLat * rad0), iy = (satImg.lat - lap.oLat) * rad0 * R0;
+      g.save(); g.globalAlpha = 0.85;
+      g.translate(X(ix, iy), Y(ix, iy)); g.rotate(-theta);
+      var Dn = satImg.D * (s / satImg.s);
+      g.drawImage(satImg, -Dn / 2, -Dn / 2, Dn, Dn);
+      g.restore(); g.globalAlpha = 1;
+    }
   }
   var vs = pts.map(function (p) { return p.kmh; }), vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
   g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
@@ -492,34 +509,29 @@ function dessiner(v, lap) {
     g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(txt, bx + 6, by + 11);
     g.restore();
   }
-  lap.macTour = v.mac + '/' + lap.num;
   proj = { cx: cx, cy: cy, uc: uc, vc: vc, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle, X: X, Y: Y, pts: pts };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
   lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
-  if (satVoulu && satCle !== cle) satPlanifier(lap, cle);
+  if (satVoulu && cle && !satOk) satPlanifier(lap, cle);
 }
 function satBascule() { satVoulu = document.getElementById('satOn').checked; try { localStorage.setItem('mt_sat', satVoulu ? '1' : '0'); } catch (e) {} rendre(); }
 // on attend la fin du geste (600 ms sans changement) avant de demander une image
 function satPlanifier(lap, cle) {
   satDemandeMs = Date.now();
-  setTimeout(function () { if (Date.now() - satDemandeMs >= 550 && proj && proj.cle === cle && satCle !== cle) satCharger(lap, cle); }, 600);
+  setTimeout(function () { if (Date.now() - satDemandeMs >= 550 && proj && proj.cle && satCleTexte(proj.cle) === satCleTexte(cle) && satCle !== satCleTexte(cle)) satCharger(lap, cle); }, 600);
 }
+function satCleTexte(c) { return c.lat.toFixed(5) + '/' + c.lon.toFixed(5) + '/' + Math.round(c.s * 100) + '/' + Math.round(c.D); }
 function satCharger(lap, cle) {
-  if (!proj || lap.oLat == null || (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) { document.getElementById('satEtat').textContent = 'Position du tour inconnue : pas de fond.'; return; }
-  var p = proj, R = 6371000, rad = Math.PI / 180;
-  // le centre de la VUE en metres : le centre du canevas, ramene dans le repere du tour
-  var cos = Math.cos(p.theta), sin = Math.sin(p.theta);
-  var u = -carte.panX / p.s + p.uc, vv = carte.panY / p.s + p.vc;   // centre du canevas -> repere tourne (y inverse), boite tournee centree [v9]
-  var vx = p.cx + u * cos + vv * sin, vy = p.cy - u * sin + vv * cos;
-  var D = Math.sqrt(p.w * p.w + p.h * p.h), demi = D / (2 * p.s);   // demi-cote du carre, en metres
-  function lat(y) { return lap.oLat + (y / R) / rad; } function lon(x) { return lap.oLon + (x / (R * Math.cos(lap.oLat * rad))) / rad; }
+  if (!cle) return;
+  var R = 6371000, rad = Math.PI / 180, demi = cle.D / (2 * cle.s);   // demi-cote du carre, en metres
+  function lat(dy) { return cle.lat + (dy / R) / rad; } function lon(dx) { return cle.lon + (dx / (R * Math.cos(cle.lat * rad))) / rad; }
   function d6(x) { return x.toFixed(6); }
-  var W = Math.max(64, Math.min(1024, Math.round(D)));
-  var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=' + d6(lon(vx - demi)) + ',' + d6(lat(vy - demi)) + ',' + d6(lon(vx + demi)) + ',' + d6(lat(vy + demi)) + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + W + '&format=png&transparent=false&f=image';
+  var W = Math.max(64, Math.min(1024, Math.round(cle.D)));
+  var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=' + d6(lon(-demi)) + ',' + d6(lat(-demi)) + ',' + d6(lon(demi)) + ',' + d6(lat(demi)) + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + W + '&format=png&transparent=false&f=image';
   document.getElementById('satEtat').textContent = 'Chargement du fond...';
   var im = new Image(); im.crossOrigin = 'anonymous';
-  im.vx = vx; im.vy = vy; im.s = p.s; im.D = D; im.cleTour = lap.macTour;
-  im.onload = function () { satImg = im; satCle = cle; document.getElementById('satEtat').textContent = ''; rendre(); };
+  im.lat = cle.lat; im.lon = cle.lon; im.s = cle.s; im.D = cle.D;
+  im.onload = function () { satImg = im; satCle = satCleTexte(cle); document.getElementById('satEtat').textContent = ''; rendre(); };
   im.onerror = function () { satImg = null; satCle = ''; document.getElementById('satEtat').textContent = 'Fond satellite non recu (reseau ?).'; };
   im.src = url;
 }
