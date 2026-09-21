@@ -85,6 +85,14 @@
     </div>
     <div class="small" id="tSrc" style="margin-top:6px"></div>
     <table id="tVals" style="margin-top:10px"></table>
+    <div id="circBloc" style="margin-top:12px;display:none">
+      <div class="row" style="justify-content:space-between">
+        <div><b id="circNom"></b> <span class="small" id="circInfo"></span></div>
+        <label class="small">Partielles <select id="circN" onchange="secteursChoisir()"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
+      </div>
+      <table id="tSect" style="margin-top:6px"></table>
+      <div class="small" id="circNote"></div>
+    </div>
     <div class="row" style="margin:10px 0 6px">
       <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
       <label class="small"><input type="radio" name="orient" value="max" onchange="orientChoisir('max')"> Maximiser le tracé</label>
@@ -128,7 +136,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v9';
+var PAGE_VER = 'MT v10';
 // [v8] les details techniques (MAC, firmware) sont masques par defaut ; le bouton en bas de page les montre
 var details = false;
 function detailsBascule() { details = !details; try { localStorage.setItem('mt_details', details ? '1' : '0'); } catch (e) {} document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails'; rendre(); }
@@ -288,7 +296,7 @@ function decodeTrace(v, b) {
   if (b.length < 16) return;
   var dv = new DataView(b.buffer, b.byteOffset);
   var num = dv.getUint16(1, true), idx = b[3], nb = b[4], npts = b[5];
-  var t = v.traces[num] || { parts: [], nb: nb }; t.nb = nb;
+  var t = v.traces[num] || { parts: [], nb: nb }; t.nb = nb; t.intervalMs = dv.getUint16(6, true);   // [v10] pour les partielles
   var pts = [], off = 16;
   for (var i = 0; i < npts && off + 5 <= b.length; i++) { pts.push({ dx: dv.getInt16(off, true), dy: dv.getInt16(off + 2, true), kmh: b[off + 4] }); off += 5; }
   t.parts[idx] = pts; v.traces[num] = t;
@@ -358,6 +366,7 @@ function rendre() {
     });
     tv.innerHTML = h;
   } else tv.innerHTML = '<tr><td class="small">Les 4 valeurs de ce tour ne sont pas encore recues.</td></tr>';
+  circuitRendre(v, lap);   // [v10]
   dessiner(v, lap);
 }
 function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, pic du signal' : s === 0 ? 'radio, 1er beacon' : '?'; }
@@ -450,6 +459,18 @@ function dessiner(v, lap) {
   g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
   for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx, pts[i - 1].dy), Y(pts[i - 1].dx, pts[i - 1].dy)); g.lineTo(X(pts[i].dx, pts[i].dy), Y(pts[i].dx, pts[i].dy)); g.stroke(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx, pts[0].dy), Y(pts[0].dx, pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+  // [v10] l'axe du circuit reconnu (fin, blanc) et les bornes des partielles (traits magenta)
+  if (circVue && circVue.axe) {
+    g.save(); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 1.5; g.setLineDash([6, 6]); g.beginPath();
+    circVue.axe.forEach(function (p, i) { var x = X(p.dx, p.dy), y = Y(p.dx, p.dy); if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); }); g.closePath(); g.stroke(); g.restore();
+  }
+  if (circVue && circVue.bornes) {
+    circVue.bornes.forEach(function (b, i) {
+      var x = X(b.dx, b.dy), y = Y(b.dx, b.dy);
+      g.save(); g.strokeStyle = '#fff'; g.lineWidth = 6; g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.stroke(); g.strokeStyle = '#ff1fd0'; g.lineWidth = 3; g.stroke();
+      g.fillStyle = '#ff1fd0'; g.font = 'bold 12px system-ui'; g.fillText('P' + (i + 2), x + 10, y - 8); g.restore();
+    });
+  }
   // la boussole : une fleche vers le nord, en haut a droite
   g.save(); g.translate(w - 22, 24); g.rotate(-theta);
   g.fillStyle = '#ff1fd0'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
@@ -579,6 +600,132 @@ function traceCsv() {
   jrn('Export CSV de la trace du tour #' + vueTour + ' : ' + pts.length + ' points.');
 }
 
+// ---- [v10] la base de circuits et les partielles ----
+// Deux CSV a la racine du depot (geometrie OpenStreetMap, ODbL) : l'axe de
+// piste de chaque circuit, en metres depuis une origine. On reconnait le
+// circuit d'un tour en projetant sa trace sur chaque axe proche ; s'il
+// colle (ecart median < 20 m, plus de 60 % de l'axe parcouru), on decoupe
+// l'axe en N partielles egales A PARTIR DE LA LIGNE DU TOUR (le point 0 de
+// la trace), dans le sens de roulage, et on lit l'heure de passage a chaque
+// borne par interpolation entre deux points de trace. Le temps total est
+// celui du module (precis) ; les partielles ont la precision de la trace
+// (un point toutes les ~0,3 a 0,7 s, donc a quelques dixiemes pres).
+var circuits = null, circErreur = '';
+var secteursN = 3;
+var circVue = null;   // l'axe et les bornes du tour AFFICHE, en metres du repere du tour (pas garde en memoire locale)
+function csvLignes(t) { return t.split(/\r?\n/).filter(function (l) { return l.length && l[0] !== '#'; }); }
+function csvChamps(l) { var out = [], cur = '', q = false; for (var i = 0; i < l.length; i++) { var c = l[i]; if (c === '"') { q = !q; } else if (c === ',' && !q) { out.push(cur); cur = ''; } else cur += c; } out.push(cur); return out; }
+function circuitsCharger() {
+  Promise.all([fetch('../circuits_index.csv').then(function (r) { if (!r.ok) throw new Error('index ' + r.status); return r.text(); }),
+               fetch('../circuits_offsets.csv').then(function (r) { if (!r.ok) throw new Error('offsets ' + r.status); return r.text(); })])
+  .then(function (tx) {
+    var li = csvLignes(tx[0]), lo = csvLignes(tx[1]);
+    var hi = csvChamps(li[0]), ho = csvChamps(lo[0]);
+    function col(h, n) { return h.indexOf(n); }
+    var c = {};
+    for (var i = 1; i < li.length; i++) {
+      var f = csvChamps(li[i]); if (f.length < 10) continue;
+      c[f[col(hi, 'track_id')]] = { id: f[col(hi, 'track_id')], nom: f[col(hi, 'nom')], oLat: +f[col(hi, 'origine_lat')], oLon: +f[col(hi, 'origine_lon')], longueur: +f[col(hi, 'longueur_m')],
+                                    mLat: +f[col(hi, 'm_par_deg_lat')], mLon: +f[col(hi, 'm_par_deg_lon')], sens: f[col(hi, 'sens')], fiab: f[col(hi, 'fiabilite')], pts: [] };
+    }
+    for (var j = 1; j < lo.length; j++) { var g = csvChamps(lo[j]); var k = c[g[col(ho, 'track_id')]]; if (k) k.pts.push({ x: +g[col(ho, 'x_m')], y: +g[col(ho, 'y_m')] }); }
+    circuits = Object.keys(c).map(function (id) { return c[id]; }).filter(function (k) { return k.pts.length >= 3; });
+    // l'abscisse curviligne de chaque sommet, polyligne fermee
+    circuits.forEach(function (k) { var cum = [0]; for (var i = 1; i <= k.pts.length; i++) { var a = k.pts[i - 1], b = k.pts[i % k.pts.length]; cum.push(cum[i - 1] + Math.hypot(b.x - a.x, b.y - a.y)); } k.cum = cum; k.L = cum[k.pts.length]; });
+    jrn('Base de circuits : ' + circuits.length + ' traces.'); rendre();
+  }).catch(function (e) { circErreur = e.message; jrn('Base de circuits non chargee : ' + e.message); });
+}
+// la projection d'un point (repere du circuit) sur l'axe : distance et abscisse curviligne
+function circProjeter(k, x, y) {
+  var best = { d: 1e9, s: 0 };
+  for (var i = 0; i < k.pts.length; i++) {
+    var a = k.pts[i], b = k.pts[(i + 1) % k.pts.length], ex = b.x - a.x, ey = b.y - a.y, l2 = ex * ex + ey * ey;
+    var t = l2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / l2)) : 0;
+    var px = a.x + t * ex, py = a.y + t * ey, d = Math.hypot(x - px, y - py);
+    if (d < best.d) { best.d = d; best.s = k.cum[i] + t * Math.sqrt(l2); }
+  }
+  return best;
+}
+// le circuit qui colle a ce tour, ou null. Rend aussi les points projetes.
+function circuitPourTour(lap, pts) {
+  if (!circuits || lap.oLat == null || !pts || pts.length < 10) return null;
+  var meilleur = null;
+  circuits.forEach(function (k) {
+    var dLat = (lap.oLat - k.oLat) * k.mLat, dLon = (lap.oLon - k.oLon) * k.mLon;
+    if (Math.hypot(dLat, dLon) > 5000) return;   // pas le meme site
+    var ds = [], ss = [];
+    pts.forEach(function (p) { var pr = circProjeter(k, dLon + p.dx, dLat + p.dy); ds.push(pr.d); ss.push(pr.s); });
+    var tri = ds.slice().sort(function (a, b) { return a - b; }), med = tri[Math.floor(tri.length / 2)];
+    // la couverture : combien de tranches de 2 % de l'axe ont recu au moins un point
+    var tranches = {}; ss.forEach(function (sv) { tranches[Math.floor(sv / k.L * 50)] = 1; }); var couv = Object.keys(tranches).length / 50;
+    if (med > 20 || couv < 0.6) return;
+    var score = med + (1 - couv) * 20;
+    if (!meilleur || score < meilleur.score) meilleur = { c: k, med: med, couv: couv, score: score, ss: ss, dLat: dLat, dLon: dLon };
+  });
+  return meilleur;
+}
+// les partielles : bornes a k x L/N depuis la ligne du tour, dans le sens de roulage
+function secteursCalculer(lap, pts, m, N, intervalMs) {
+  var k = m.c, L = k.L, ss = m.ss, n = pts.length;
+  if (!intervalMs || n < 10) return null;
+  // sens : la majorite des pas d'abscisse (modulo L) sont-ils positifs ?
+  var pos = 0, neg = 0;
+  for (var i = 1; i < n; i++) { var d = ss[i] - ss[i - 1]; if (d > L / 2) d -= L; if (d < -L / 2) d += L; if (Math.abs(d) < L / 4) { if (d > 0) pos++; else if (d < 0) neg++; } }
+  var sensPos = pos >= neg;
+  // l'abscisse relative a la ligne, deroulee (monotone croissante dans le sens de roulage)
+  var r = [0], s0 = ss[0];
+  for (var i2 = 1; i2 < n; i2++) { var dd = ss[i2] - ss[i2 - 1]; if (dd > L / 2) dd -= L; if (dd < -L / 2) dd += L; if (!sensPos) dd = -dd; r.push(Math.max(r[i2 - 1], r[i2 - 1] + dd)); }
+  var t = function (i) { return i * intervalMs; };
+  var bornes = [], tB = [];
+  for (var q = 1; q < N; q++) {
+    var B = q * L / N, tb = null;
+    for (var i3 = 1; i3 < n; i3++) if (r[i3] >= B && r[i3 - 1] < B) { var f = (B - r[i3 - 1]) / Math.max(r[i3] - r[i3 - 1], 1e-6); tb = t(i3 - 1) + f * (t(i3) - t(i3 - 1)); break; }
+    bornes.push(B); tB.push(tb);
+  }
+  var total = lap.dureeMs != null ? lap.dureeMs : t(n - 1);
+  var sect = [], prev = 0;
+  for (var q2 = 0; q2 < N; q2++) { var fin = q2 < N - 1 ? tB[q2] : total; sect.push(fin != null && prev != null ? fin - prev : null); prev = fin; }
+  return { sect: sect, bornes: bornes, sensPos: sensPos, parcouru: r[n - 1], L: L };
+}
+function secteursChoisir() { secteursN = +document.getElementById('circN').value; try { localStorage.setItem('mt_sectN', secteursN); } catch (e) {} rendre(); }
+// le rendu du bloc, appele par rendre() ; rend aussi ce qu'il faut a la carte (bornes en metres du repere du tour)
+function circuitRendre(v, lap) {
+  var bloc = document.getElementById('circBloc'); bloc.style.display = 'none'; circVue = null;
+  if (!circuits) { if (circErreur) document.getElementById('circNote').textContent = 'Base de circuits : ' + circErreur; return; }
+  var pts = traceEntiere(v.traces[lap.num]), m = circuitPourTour(lap, pts);
+  if (!m) return;
+  var tr = v.traces[lap.num], res = secteursCalculer(lap, pts, m, secteursN, tr.intervalMs);
+  bloc.style.display = '';
+  document.getElementById('circNom').textContent = m.c.nom;
+  document.getElementById('circInfo').textContent = 'reconnu (écart médian ' + m.med.toFixed(0) + ' m, ' + Math.round(m.couv * 100) + ' % de l\u2019axe, ' + m.c.longueur.toFixed(0) + ' m)';
+  if (!res) { document.getElementById('tSect').innerHTML = ''; document.getElementById('circNote').textContent = 'Pas de base de temps dans la trace : partielles impossibles.'; return; }
+  // le meilleur tour de cette voiture sur ce circuit, pour les ecarts
+  var laps = lapsTries(v), meilleurs = null, meilleurNum = null;
+  laps.forEach(function (l) {
+    if (l.dureeMs == null) return; var p2 = traceEntiere(v.traces[l.num]); var m2 = circuitPourTour(l, p2); if (!m2 || m2.c.id !== m.c.id) return;
+    var r2 = secteursCalculer(l, p2, m2, secteursN, v.traces[l.num].intervalMs); if (!r2) return;
+    if (!meilleurs) { meilleurs = r2.sect.slice(); meilleurNum = {}; r2.sect.forEach(function (x, i) { meilleurNum[i] = l.num; }); }
+    else r2.sect.forEach(function (x, i) { if (x != null && (meilleurs[i] == null || x < meilleurs[i])) { meilleurs[i] = x; meilleurNum[i] = l.num; } });
+  });
+  var h = '<tr><th>Partielle</th><th class="num">Temps</th><th class="num">Écart vs meilleure</th><th class="small">Meilleure</th></tr>';
+  res.sect.forEach(function (x, i) {
+    var mb = meilleurs ? meilleurs[i] : null;
+    h += '<tr><td>P' + (i + 1) + ' <span class="small">(' + Math.round(i * res.L / secteursN) + '–' + Math.round((i + 1) * res.L / secteursN) + ' m)</span></td><td class="num"><b>' + (x != null ? (x / 1000).toFixed(2) + ' s' : '\u2014') + '</b></td><td class="num">'
+      + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + meilleurNum[i] : '') + '</td></tr>';
+  });
+  document.getElementById('tSect').innerHTML = h;
+  document.getElementById('circNote').textContent = 'Bornes à ' + Math.round(res.L / secteursN) + ' m depuis la ligne du tour, dans le sens de roulage (' + (res.sensPos ? m.c.sens : (m.c.sens === 'horaire' ? 'antihoraire' : 'horaire')) + '). Précision : celle de la trace (un point / ' + tr.intervalMs + ' ms).';
+  // les bornes pour la carte : abscisse -> point de l'axe -> repere du tour
+  var bornes = [];
+  res.bornes.forEach(function (B) {
+    var sAbs = m.ss[0] + (res.sensPos ? B : -B); sAbs = ((sAbs % m.c.L) + m.c.L) % m.c.L;
+    var k = m.c, i = 0; while (i < k.pts.length - 1 && k.cum[i + 1] < sAbs) i++;
+    var a = k.pts[i], b = k.pts[(i + 1) % k.pts.length], f = (sAbs - k.cum[i]) / Math.max(k.cum[i + 1] - k.cum[i], 1e-6);
+    bornes.push({ dx: a.x + f * (b.x - a.x) - m.dLon, dy: a.y + f * (b.y - a.y) - m.dLat });
+  });
+  circVue = { bornes: bornes, axe: m.c.pts.map(function (p) { return { dx: p.x - m.dLon, dy: p.y - m.dLat }; }) };
+}
+
 // ---- commandes ----
 async function ligneRefaire() {
   if (!vueMac) return;
@@ -612,6 +759,8 @@ try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById
 document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
 try { details = localStorage.getItem('mt_details') === '1'; } catch (e) {}
 document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails';
+try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; } catch (e) {} document.getElementById('circN').value = secteursN;
+circuitsCharger();
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
 jrn('Page ' + PAGE_VER + ' prete.');

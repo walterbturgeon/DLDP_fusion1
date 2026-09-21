@@ -4,8 +4,8 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v9';   // v9 : cadrage centre sur la boite tournee (tour coupe a droite)
-const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg'];
+const CACHE = PREFIX + 'v10';   // v10 : base de circuits, partielles
+const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg', '../circuits_index.csv', '../circuits_offsets.csv'];
 
 self.addEventListener('install', (ev) => {
   ev.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
