@@ -84,7 +84,8 @@
       <div><div class="small">Écart vs meilleur</div><div class="grand" id="tBest"></div></div>
     </div>
     <div class="small" id="tSrc" style="margin-top:6px"></div>
-    <table id="tVals" style="margin-top:10px"></table>
+    <div class="row" style="margin-top:10px"><label class="small"><input type="checkbox" id="valOn" checked onchange="valeursBascule()"> Valeurs du tour (p1 à p4)</label></div>
+    <table id="tVals" style="margin-top:4px"></table>
     <div id="circBloc" style="margin-top:12px;display:none">
       <div class="row" style="justify-content:space-between">
         <div><b id="circNom"></b> <span class="small" id="circInfo"></span></div>
@@ -137,7 +138,10 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v13';
+var PAGE_VER = 'MT v14';
+// [v14] l'interrupteur des 4 valeurs (p1..p4) du tour
+var valeursOn = true;
+function valeursBascule() { valeursOn = document.getElementById('valOn').checked; try { localStorage.setItem('mt_val', valeursOn ? '1' : '0'); } catch (e) {} rendre(); }
 // [v11] l'interrupteur des partielles : les montrer (tableau + bornes sur la carte) ou non
 var partiellesOn = true;
 function partiellesBascule() { partiellesOn = document.getElementById('partOn').checked; try { localStorage.setItem('mt_part', partiellesOn ? '1' : '0'); } catch (e) {} rendre(); }
@@ -360,7 +364,7 @@ function rendre() {
   document.getElementById('tBest').textContent = best && lap.dureeMs != null ? (lap === best ? 'meilleur' : ecartTexte(lap.dureeMs - best.dureeMs)) : '—';
   document.getElementById('tSrc').textContent = lap.dureeMs == null ? '⚠ Resume du tour pas encore recu (valeurs ou trace seulement).' : 'Chronometrage : ' + source(lap.source) + (lap.dMax ? ' · jusqu’a ' + lap.dMax + ' m de l’origine' : '');
   // les 4 valeurs
-  var tv = document.getElementById('tVals');
+  var tv = document.getElementById('tVals'); tv.style.display = valeursOn ? '' : 'none';
   if (lap.pv) {
     var h = '<tr><th>Valeur</th><th class="num">Min</th><th class="num">Moy</th><th class="num">Max</th><th class="num">n</th><th></th></tr>';
     lap.pv.items.forEach(function (it) {
@@ -776,7 +780,7 @@ try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById
 document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
 try { details = localStorage.getItem('mt_details') === '1'; } catch (e) {}
 document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails';
-try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; } catch (e) {} document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
+try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; valeursOn = localStorage.getItem('mt_val') !== '0'; } catch (e) {} document.getElementById('valOn').checked = valeursOn; document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
 circuitsCharger();
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
