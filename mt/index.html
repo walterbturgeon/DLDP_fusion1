@@ -105,6 +105,10 @@
 </div>
 
 <div class="card">
+  <div class="row"><button class="btn sec" id="btnDetails" onclick="detailsBascule()">Détails</button><span class="small">Numéros de série (MAC) et versions des boîtes.</span></div>
+</div>
+
+<div class="card">
   <details>
     <summary>Journal de diagnostic</summary>
     <div class="row" style="margin:8px 0"><button class="btn sec" onclick="toursCsv()">Exporter les tours (CSV)</button><button class="btn sec" onclick="traceCsv()">Exporter la trace du tour (CSV)</button></div>
@@ -124,7 +128,10 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v7';
+var PAGE_VER = 'MT v8';
+// [v8] les details techniques (MAC, firmware) sont masques par defaut ; le bouton en bas de page les montre
+var details = false;
+function detailsBascule() { details = !details; try { localStorage.setItem('mt_details', details ? '1' : '0'); } catch (e) {} document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails'; rendre(); }
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -308,7 +315,7 @@ function rendre() {
   ordreVoitures.forEach(function (m) {
     var v = voitures[m]; var portee = v.vuMs && (Date.now() - v.vuMs) < 30000;
     var d = document.createElement('div'); d.className = 'tab' + (m === vueMac ? ' on' : '');
-    d.innerHTML = '<div class="nom"><span class="portee' + (portee ? ' ok' : '') + '"></span>' + v.nom + '</div><div class="sub">' + m + ' · ' + Object.keys(v.laps).length + ' tour(s)</div>';
+    d.innerHTML = '<div class="nom"><span class="portee' + (portee ? ' ok' : '') + '"></span>' + v.nom + '</div><div class="sub">' + (details ? m : 'n° ' + v.num) + ' · ' + Object.keys(v.laps).length + ' tour(s)</div>';
     d.onclick = function () { vueMac = m; vueTour = null; rendre(); };
     tabs.appendChild(d);
   });
@@ -317,7 +324,7 @@ function rendre() {
   if (!vueMac) return;
   var v = voitures[vueMac];
   document.getElementById('vNom').textContent = v.nom;
-  document.getElementById('vSub').textContent = 'n° ' + v.num + ' · ' + v.mac + (v.fw ? ' · ' + v.fw : '') + (v.vuMs ? ' · vu il y a ' + Math.round((Date.now() - v.vuMs) / 1000) + ' s' : '');
+  document.getElementById('vSub').textContent = 'n° ' + v.num + (details ? ' · ' + v.mac + (v.fw ? ' · ' + v.fw : '') : '') + (v.vuMs ? ' · vu il y a ' + Math.round((Date.now() - v.vuMs) / 1000) + ' s' : '');
   var laps = lapsTries(v);
   var best = null; laps.forEach(function (l) { if (l.dureeMs != null && (!best || l.dureeMs < best.dureeMs)) best = l; });
   if (vueTour == null && laps.length) vueTour = laps[laps.length - 1].num;
@@ -599,6 +606,8 @@ document.getElementById('pageVer').textContent = 'page ' + PAGE_VER;
 charger();
 try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById('satOn').checked = satVoulu; carte.mode = localStorage.getItem('mt_orient') === 'nord' ? 'nord' : 'max'; } catch (e) {}
 document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
+try { details = localStorage.getItem('mt_details') === '1'; } catch (e) {}
+document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails';
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
 jrn('Page ' + PAGE_VER + ' prete.');
