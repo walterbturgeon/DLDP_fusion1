@@ -87,10 +87,14 @@
     <table id="tVals" style="margin-top:10px"></table>
     <div class="row" style="margin:10px 0 6px">
       <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
+      <label class="small"><input type="radio" name="orient" value="max" onchange="orientChoisir('max')"> Maximiser le tracé</label>
+      <label class="small"><input type="radio" name="orient" value="nord" onchange="orientChoisir('nord')"> Nord en haut</label>
+      <button class="btn sec" style="padding:4px 10px" onclick="carteRecadrer()">Recadrer</button>
       <span class="small" id="satEtat"></span>
     </div>
-    <canvas id="carte" height="10"></canvas>
+    <canvas id="carte" height="10" style="touch-action:none"></canvas>
     <div class="small" id="carteLeg"></div>
+    <div class="small">Un doigt : déplacer. Deux doigts : zoomer et tourner. Double toucher : recadrer.</div>
   </div>
 
   <div class="card">
@@ -102,6 +106,7 @@
 <div class="card">
   <details>
     <summary>Journal de diagnostic</summary>
+    <div class="row" style="margin:8px 0"><button class="btn sec" onclick="toursCsv()">Exporter les tours (CSV)</button><button class="btn sec" onclick="traceCsv()">Exporter la trace du tour (CSV)</button></div>
     <div class="row" style="margin:8px 0"><button class="btn sec" onclick="jrnPartager()">Télécharger le journal</button><button class="btn sec" onclick="jrnEffacer()">Effacer</button></div>
     <div class="jrn" id="jrn"></div>
   </details>
@@ -118,7 +123,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v1';
+var PAGE_VER = 'MT v2';
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -350,7 +355,23 @@ function rendre() {
 function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, pic du signal' : s === 0 ? 'radio, 1er beacon' : '?'; }
 
 // ---- la carte ----
+// La carte a une ORIENTATION de base (nord en haut, ou tournee pour que le
+// trace occupe le plus de place) et une vue MANUELLE par-dessus : zoom,
+// rotation, deplacement au doigt. Le fond satellite est demande en carre,
+// centre sur la vue, assez grand pour couvrir toute rotation, et dessine
+// avec la meme transformation que le trace.
+var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0 };
+var satDemandeMs = 0;
 function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
+function orientChoisir(m) { carte.mode = m; carte.zoom = 1; carte.rot = 0; carte.panX = carte.panY = 0; try { localStorage.setItem('mt_orient', m); } catch (e) {} rendre(); }
+function carteRecadrer() { carte.zoom = 1; carte.rot = 0; carte.panX = carte.panY = 0; rendre(); }
+// l'angle qui couche le grand axe du trace dans le sens le plus long du canevas
+function angleMax(pts, w, h) {
+  var n = pts.length, mx = 0, my = 0; pts.forEach(function (p) { mx += p.dx; my += p.dy; }); mx /= n; my /= n;
+  var sxx = 0, syy = 0, sxy = 0; pts.forEach(function (p) { var x = p.dx - mx, y = p.dy - my; sxx += x * x; syy += y * y; sxy += x * y; });
+  var a = 0.5 * Math.atan2(2 * sxy, sxx - syy);   // direction du grand axe (radians, depuis l'est vers le nord)
+  return (w >= h) ? -a : (Math.PI / 2 - a);          // canevas large : grand axe horizontal ; haut : vertical
+}
 function dessiner(v, lap) {
   var c = document.getElementById('carte'), lg = document.getElementById('carteLeg');
   var pts = traceEntiere(v.traces[lap.num]);
@@ -360,36 +381,132 @@ function dessiner(v, lap) {
   var h = Math.max(180, Math.min(460, Math.round(w * 0.72), Math.round(window.innerHeight * 0.55)));
   c.style.height = h + 'px'; c.width = w * dpr; c.height = h * dpr;
   var g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
-  var cle = v.mac + '/' + lap.num + '/' + w + 'x' + h;
-  if (satImg && satCle === cle) { g.globalAlpha = 0.85; g.drawImage(satImg, 0, 0, w, h); g.globalAlpha = 1; }
   var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
-  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs), minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-  var pad = 24, s = Math.min((w - 2 * pad) / Math.max(maxX - minX, 1), (h - 2 * pad) / Math.max(maxY - minY, 1));
-  var ox = (w - (maxX - minX) * s) / 2, oy = (h - (maxY - minY) * s) / 2;
-  function X(x) { return ox + (x - minX) * s; } function Y(y) { return h - (oy + (y - minY) * s); }
+  var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+  var theta = (carte.mode === 'nord' ? 0 : angleMax(pts, w, h)) + carte.rot;
+  // l'echelle de base : le trace TOURNE doit tenir dans le canevas
+  var cos = Math.cos(theta), sin = Math.sin(theta), minU = 1e9, maxU = -1e9, minV = 1e9, maxV = -1e9;
+  pts.forEach(function (p) { var x = p.dx - cx, y = p.dy - cy; var u = x * cos - y * sin, vv = x * sin + y * cos; if (u < minU) minU = u; if (u > maxU) maxU = u; if (vv < minV) minV = vv; if (vv > maxV) maxV = vv; });
+  var pad = 24, s0 = Math.min((w - 2 * pad) / Math.max(maxU - minU, 1), (h - 2 * pad) / Math.max(maxV - minV, 1));
+  var s = s0 * carte.zoom;
+  // metres -> ecran : centre du trace au centre du canevas, rotation theta, y vers le haut, puis le deplacement au doigt
+  function X(x, y) { var u = (x - cx) * cos - (y - cy) * sin; return w / 2 + u * s + carte.panX; }
+  function Y(x, y) { var vv = (x - cx) * sin + (y - cy) * cos; return h / 2 - vv * s + carte.panY; }
+  var cle = v.mac + '/' + lap.num + '/' + w + 'x' + h + '/' + Math.round(s * 1000);
+  if (satImg && satImg.cleTour === v.mac + '/' + lap.num) {
+    // le carre satellite : son centre est un point connu en metres (im.vx, im.vy) ; on le pose la ou ce
+    // point tombe MAINTENANT, tourne comme le trace, a l'echelle du moment. Entre deux images (pendant un
+    // geste), il suit donc le trace, un peu flou ; la bonne image arrive 600 ms apres la fin du geste.
+    g.save(); g.globalAlpha = 0.85;
+    g.translate(X(satImg.vx, satImg.vy), Y(satImg.vx, satImg.vy)); g.rotate(-theta);
+    var Dn = satImg.D * (s / satImg.s);
+    g.drawImage(satImg, -Dn / 2, -Dn / 2, Dn, Dn);
+    g.restore(); g.globalAlpha = 1;
+  }
   var vs = pts.map(function (p) { return p.kmh; }), vmin = Math.min.apply(null, vs), vmax = Math.max.apply(null, vs);
   g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
-  for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx), Y(pts[i - 1].dy)); g.lineTo(X(pts[i].dx), Y(pts[i].dy)); g.stroke(); }
-  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx), Y(pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
-  proj = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, w: w, h: h, s: s, lap: lap, cle: cle };
+  for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx, pts[i - 1].dy), Y(pts[i - 1].dx, pts[i - 1].dy)); g.lineTo(X(pts[i].dx, pts[i].dy), Y(pts[i].dx, pts[i].dy)); g.stroke(); }
+  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx, pts[0].dy), Y(pts[0].dx, pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
+  // la boussole : une fleche vers le nord, en haut a droite
+  g.save(); g.translate(w - 22, 24); g.rotate(-theta);
+  g.fillStyle = '#ff1fd0'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(0, -14); g.lineTo(6, 6); g.lineTo(0, 2); g.lineTo(-6, 6); g.closePath(); g.fill(); g.stroke();
+  g.restore(); g.fillStyle = '#ff1fd0'; g.font = 'bold 11px system-ui'; g.fillText('N', w - 26, 44);
+  lap.macTour = v.mac + '/' + lap.num;
+  proj = { cx: cx, cy: cy, theta: theta, s: s, w: w, h: h, lap: lap, cle: cle };
   var t = v.traces[lap.num], manque = t ? t.nb - t.parts.filter(function (p) { return p; }).length : 0;
-  lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '');
-  if (satVoulu && satCle !== cle) satCharger(lap, cle);
+  lg.textContent = 'Vert = lent, rouge = rapide (' + Math.round(vmin) + ' a ' + Math.round(vmax) + ' km/h). ' + pts.length + ' points' + (manque > 0 ? ' — ' + manque + ' morceau(x) manquant(s).' : '') + (carte.zoom !== 1 ? ' · zoom ×' + carte.zoom.toFixed(1) : '');
+  if (satVoulu && satCle !== cle) satPlanifier(lap, cle);
 }
 function satBascule() { satVoulu = document.getElementById('satOn').checked; try { localStorage.setItem('mt_sat', satVoulu ? '1' : '0'); } catch (e) {} rendre(); }
+// on attend la fin du geste (600 ms sans changement) avant de demander une image
+function satPlanifier(lap, cle) {
+  satDemandeMs = Date.now();
+  setTimeout(function () { if (Date.now() - satDemandeMs >= 550 && proj && proj.cle === cle && satCle !== cle) satCharger(lap, cle); }, 600);
+}
 function satCharger(lap, cle) {
   if (!proj || lap.oLat == null || (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) { document.getElementById('satEtat').textContent = 'Position du tour inconnue : pas de fond.'; return; }
-  var p = proj, pad = 24, demiL = p.w / (2 * p.s), demiH = p.h / (2 * p.s), cx = (p.minX + p.maxX) / 2, cy = (p.minY + p.maxY) / 2;
-  var R = 6371000, rad = Math.PI / 180;
+  var p = proj, R = 6371000, rad = Math.PI / 180;
+  // le centre de la VUE en metres : le centre du canevas, ramene dans le repere du tour
+  var cos = Math.cos(p.theta), sin = Math.sin(p.theta);
+  var u = -carte.panX / p.s, vv = carte.panY / p.s;         // decalage ecran -> repere tourne (y inverse)
+  var vx = p.cx + u * cos + vv * sin, vy = p.cy - u * sin + vv * cos;
+  var D = Math.sqrt(p.w * p.w + p.h * p.h), demi = D / (2 * p.s);   // demi-cote du carre, en metres
   function lat(y) { return lap.oLat + (y / R) / rad; } function lon(x) { return lap.oLon + (x / (R * Math.cos(lap.oLat * rad))) / rad; }
-  function d6(v) { return v.toFixed(6); }
-  var W = Math.max(64, Math.min(1024, Math.round(p.w))), H = Math.max(64, Math.min(1024, Math.round(p.h)));
-  var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=' + d6(lon(cx - demiL)) + ',' + d6(lat(cy - demiH)) + ',' + d6(lon(cx + demiL)) + ',' + d6(lat(cy + demiH)) + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + H + '&format=png&transparent=false&f=image';
+  function d6(x) { return x.toFixed(6); }
+  var W = Math.max(64, Math.min(1024, Math.round(D)));
+  var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=' + d6(lon(vx - demi)) + ',' + d6(lat(vy - demi)) + ',' + d6(lon(vx + demi)) + ',' + d6(lat(vy + demi)) + '&bboxSR=4326&imageSR=3857&size=' + W + ',' + W + '&format=png&transparent=false&f=image';
   document.getElementById('satEtat').textContent = 'Chargement du fond...';
   var im = new Image(); im.crossOrigin = 'anonymous';
+  im.vx = vx; im.vy = vy; im.s = p.s; im.D = D; im.cleTour = lap.macTour;
   im.onload = function () { satImg = im; satCle = cle; document.getElementById('satEtat').textContent = ''; rendre(); };
   im.onerror = function () { satImg = null; satCle = ''; document.getElementById('satEtat').textContent = 'Fond satellite non recu (reseau ?).'; };
   im.src = url;
+}
+// ---- les gestes : un doigt deplace, deux doigts zooment et tournent, double toucher recadre ----
+(function () {
+  var c = document.getElementById('carte'), doigts = {}, dernierTap = 0, dep = null;
+  function liste() { return Object.keys(doigts).map(function (k) { return doigts[k]; }); }
+  c.addEventListener('pointerdown', function (e) {
+    c.setPointerCapture(e.pointerId); doigts[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var l = liste();
+    if (l.length === 1) { var t = Date.now(); if (t - dernierTap < 350) { carteRecadrer(); dernierTap = 0; } else dernierTap = t; dep = { x: e.clientX, y: e.clientY, panX: carte.panX, panY: carte.panY }; }
+    if (l.length === 2) dep = { d: Math.hypot(l[1].x - l[0].x, l[1].y - l[0].y), a: Math.atan2(l[1].y - l[0].y, l[1].x - l[0].x), mx: (l[0].x + l[1].x) / 2, my: (l[0].y + l[1].y) / 2, zoom: carte.zoom, rot: carte.rot, panX: carte.panX, panY: carte.panY };
+    e.preventDefault();
+  });
+  c.addEventListener('pointermove', function (e) {
+    if (!doigts[e.pointerId]) return;
+    doigts[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var l = liste(); if (!dep) return;
+    if (l.length === 1 && dep.panX != null && dep.d == null) { carte.panX = dep.panX + (e.clientX - dep.x); carte.panY = dep.panY + (e.clientY - dep.y); }
+    else if (l.length === 2 && dep.d != null) {
+      var d = Math.hypot(l[1].x - l[0].x, l[1].y - l[0].y), a = Math.atan2(l[1].y - l[0].y, l[1].x - l[0].x);
+      carte.zoom = Math.max(0.3, Math.min(20, dep.zoom * d / dep.d));
+      carte.rot = dep.rot - (a - dep.a);   // les doigts tournent la carte avec eux
+      carte.panX = dep.panX + ((l[0].x + l[1].x) / 2 - dep.mx); carte.panY = dep.panY + ((l[0].y + l[1].y) / 2 - dep.my);
+    }
+    if (vueMac && vueTour != null) dessiner(voitures[vueMac], voitures[vueMac].laps[vueTour]);
+    e.preventDefault();
+  });
+  function fin(e) { delete doigts[e.pointerId]; var l = liste(); dep = l.length === 1 ? { x: l[0].x, y: l[0].y, panX: carte.panX, panY: carte.panY } : null; }
+  c.addEventListener('pointerup', fin); c.addEventListener('pointercancel', fin); c.addEventListener('pointerout', fin);
+  c.addEventListener('wheel', function (e) { carte.zoom = Math.max(0.3, Math.min(20, carte.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); if (vueMac && vueTour != null) dessiner(voitures[vueMac], voitures[vueMac].laps[vueTour]); e.preventDefault(); }, { passive: false });
+})();
+
+// ---- export CSV ----
+function csvTelecharger(nom, texte) {
+  var b = new Blob(['\ufeff' + texte], { type: 'text/csv;charset=utf-8' }); var a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = nom; a.click();
+}
+function csvChamp(x) { x = String(x == null ? '' : x); return /[;"\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }
+function toursCsv() {
+  var lignes = ['voiture;mac;num;tour;temps_s;ecart_precedent_s;chrono;recu;p1_nom;p1_unite;p1_min;p1_moy;p1_max;p1_n;p2_nom;p2_unite;p2_min;p2_moy;p2_max;p2_n;p3_nom;p3_unite;p3_min;p3_moy;p3_max;p3_n;p4_nom;p4_unite;p4_min;p4_moy;p4_max;p4_n;origine_lat;origine_lon;dist_max_m;points_trace'];
+  ordreVoitures.forEach(function (m) {
+    var v = voitures[m], laps = lapsTries(v);
+    laps.forEach(function (l, i) {
+      var prec = i > 0 ? laps[i - 1] : null;
+      var r = [v.nom, m, v.num, l.num, l.dureeMs != null ? (l.dureeMs / 1000).toFixed(3) : '', prec && prec.dureeMs != null && l.dureeMs != null ? ((l.dureeMs - prec.dureeMs) / 1000).toFixed(3) : '', source(l.source), l.recuMs ? new Date(l.recuMs).toISOString() : ''];
+      for (var k = 0; k < 4; k++) { var it = l.pv && l.pv.items[k]; if (it && it.idx !== 255) r.push(it.nom || ('canal ' + it.idx), it.unite, +it.min.toFixed(3), +it.moy.toFixed(3), +it.max.toFixed(3), it.n); else r.push('', '', '', '', '', ''); }
+      r.push(l.oLat != null ? l.oLat.toFixed(7) : '', l.oLon != null ? l.oLon.toFixed(7) : '', l.dMax != null ? l.dMax : '', traceEntiere(v.traces[l.num]).length);
+      lignes.push(r.map(csvChamp).join(';'));
+    });
+  });
+  csvTelecharger('tracklogics_tours_' + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '') + '.csv', lignes.join('\n'));
+  jrn('Export CSV : ' + (lignes.length - 1) + ' tour(s).');
+}
+function traceCsv() {
+  if (!vueMac || vueTour == null) { jrn('Pas de tour affiche : rien a exporter.'); return; }
+  var v = voitures[vueMac], lap = v.laps[vueTour], pts = traceEntiere(v.traces[vueTour]);
+  if (!pts.length) { jrn('Le tour #' + vueTour + ' n\u2019a pas de trace.'); return; }
+  var t = v.traces[vueTour], interv = t && t.intervalMs ? t.intervalMs : '';
+  var lignes = ['voiture;tour;point;dx_m;dy_m;kmh;lat;lon'];
+  var R = 6371000, rad = Math.PI / 180;
+  pts.forEach(function (p, i) {
+    var la = lap.oLat != null ? (lap.oLat + (p.dy / R) / rad).toFixed(7) : '', lo = lap.oLon != null ? (lap.oLon + (p.dx / (R * Math.cos(lap.oLat * rad))) / rad).toFixed(7) : '';
+    lignes.push([v.nom, vueTour, i, p.dx, p.dy, p.kmh, la, lo].join(';'));
+  });
+  csvTelecharger('tracklogics_trace_' + v.nom + '_tour' + vueTour + '.csv', lignes.join('\n'));
+  jrn('Export CSV de la trace du tour #' + vueTour + ' : ' + pts.length + ' points.');
 }
 
 // ---- commandes ----
@@ -421,7 +538,8 @@ if ('serviceWorker' in navigator) {
 
 document.getElementById('pageVer').textContent = 'page ' + PAGE_VER;
 charger();
-try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById('satOn').checked = satVoulu; } catch (e) {}
+try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById('satOn').checked = satVoulu; carte.mode = localStorage.getItem('mt_orient') === 'nord' ? 'nord' : 'max'; } catch (e) {}
+document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
 jrn('Page ' + PAGE_VER + ' prete.');

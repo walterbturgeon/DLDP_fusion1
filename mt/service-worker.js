@@ -4,7 +4,7 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v1';
+const CACHE = PREFIX + 'v2';   // v2 : export CSV, carte orientable, pincer pour zoomer et tourner
 const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png'];
 
 self.addEventListener('install', (ev) => {
