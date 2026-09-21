@@ -123,7 +123,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v3';
+var PAGE_VER = 'MT v4';
 var RL_SVC = 'b3d5a900-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_DATA = 'b3d5a901-1a2b-4c3d-9e0f-56789abcdef0';
 var RL_CMD = 'b3d5a902-1a2b-4c3d-9e0f-56789abcdef0';
@@ -361,18 +361,29 @@ function source(s) { return s === 1 ? 'ligne GPS (precis)' : s === 2 ? 'radio, p
 // centre sur la vue, assez grand pour couvrir toute rotation, et dessine
 // avec la meme transformation que le trace.
 var carte = { mode: 'max', zoom: 1, rot: 0, panX: 0, panY: 0 };
-// [v3] le filigrane : le logo TRACKLOGICS en bas a gauche de la carte, sur un fond gris semi-transparent
-var logoImg = new Image(); var logoPret = false; logoImg.onload = function () { logoPret = true; if (vueMac && vueTour != null) rendre(); }; logoImg.src = '../logo-tracklogics.svg';
+// [v4] le filigrane : le logo TRACLOGICS (la banniere JPEG du depot, fond blanc rendu
+// transparent au chargement) en bas de la carte, sur un fond gris semi-transparent.
+var logoImg = new Image(); var logoCanvas = null;
+logoImg.onload = function () {
+  var oc = document.createElement('canvas'); oc.width = logoImg.width; oc.height = logoImg.height;
+  var og = oc.getContext('2d'); og.drawImage(logoImg, 0, 0);
+  try {
+    var id = og.getImageData(0, 0, oc.width, oc.height), d = id.data;
+    for (var k = 0; k < d.length; k += 4) { var m = Math.min(d[k], d[k + 1], d[k + 2]); if (m > 225) d[k + 3] = 0; else if (m > 190) d[k + 3] = Math.round((225 - m) / 35 * 255); }
+    og.putImageData(id, 0, 0);
+  } catch (e) {}
+  logoCanvas = oc; if (vueMac && vueTour != null) rendre();
+};
+logoImg.src = 'logo-traclogics.jpg';
 function filigrane(g, w, h) {
-  var L = 34, x = 10, y = h - L - 10, texte = 'TRACKLOGICS';
-  g.save(); g.font = 'bold 13px system-ui'; var tw = g.measureText(texte).width;
-  g.fillStyle = 'rgba(110,110,110,0.55)'; g.beginPath(); g.roundRect(x - 6, y - 6, L + tw + 26, L + 12, 8); g.fill();
-  if (logoPret) g.drawImage(logoImg, x, y, L, L);
-  g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(texte, x + L + 8, y + L / 2);
+  if (!logoCanvas) return;
+  var lw = Math.min(w * 0.42, 320), lh = lw * logoCanvas.height / logoCanvas.width, x = (w - lw) / 2, y = h - lh - 10;
+  g.save();
+  g.fillStyle = 'rgba(120,120,120,0.55)'; g.beginPath(); g.roundRect(x - 10, y - 6, lw + 20, lh + 12, 10); g.fill();
+  g.globalAlpha = 0.95; g.drawImage(logoCanvas, x, y, lw, lh);
   g.restore();
 }
 var satDemandeMs = 0;
-function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
 function orientChoisir(m) { carte.mode = m; carte.zoom = 1; carte.rot = 0; carte.panX = carte.panY = 0; try { localStorage.setItem('mt_orient', m); } catch (e) {} rendre(); }
 function carteRecadrer() { carte.zoom = 1; carte.rot = 0; carte.panX = carte.panY = 0; rendre(); }
 // l'angle qui couche le grand axe du trace dans le sens le plus long du canevas
@@ -382,6 +393,7 @@ function angleMax(pts, w, h) {
   var a = 0.5 * Math.atan2(2 * sxy, sxx - syy);   // direction du grand axe (radians, depuis l'est vers le nord)
   return (w >= h) ? -a : (Math.PI / 2 - a);          // canevas large : grand axe horizontal ; haut : vertical
 }
+function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
 function dessiner(v, lap) {
   var c = document.getElementById('carte'), lg = document.getElementById('carteLeg');
   var pts = traceEntiere(v.traces[lap.num]);

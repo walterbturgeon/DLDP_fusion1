@@ -4,8 +4,8 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v3';   // v3 : filigrane TRACKLOGICS sur la carte
-const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', '../logo-tracklogics.svg'];
+const CACHE = PREFIX + 'v4';   // v4 : le vrai logo TRACLOGICS (JPEG) en filigrane
+const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg'];
 
 self.addEventListener('install', (ev) => {
   ev.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
