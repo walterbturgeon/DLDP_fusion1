@@ -88,10 +88,11 @@
     <div id="circBloc" style="margin-top:12px;display:none">
       <div class="row" style="justify-content:space-between">
         <div><b id="circNom"></b> <span class="small" id="circInfo"></span></div>
-        <label class="small">Partielles <select id="circN" onchange="secteursChoisir()"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
+        <label class="small"><input type="checkbox" id="partOn" checked onchange="partiellesBascule()"> Partielles</label>
+        <label class="small" id="circNLabel"><select id="circN" onchange="secteursChoisir()"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
       </div>
-      <table id="tSect" style="margin-top:6px"></table>
-      <div class="small" id="circNote"></div>
+      <div id="partBloc"><table id="tSect" style="margin-top:6px"></table>
+      <div class="small" id="circNote"></div></div>
     </div>
     <div class="row" style="margin:10px 0 6px">
       <label class="small"><input type="checkbox" id="satOn" onchange="satBascule()"> Fond satellite</label>
@@ -136,7 +137,10 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v10';
+var PAGE_VER = 'MT v11';
+// [v11] l'interrupteur des partielles : les montrer (tableau + bornes sur la carte) ou non
+var partiellesOn = true;
+function partiellesBascule() { partiellesOn = document.getElementById('partOn').checked; try { localStorage.setItem('mt_part', partiellesOn ? '1' : '0'); } catch (e) {} rendre(); }
 // [v8] les details techniques (MAC, firmware) sont masques par defaut ; le bouton en bas de page les montre
 var details = false;
 function detailsBascule() { details = !details; try { localStorage.setItem('mt_details', details ? '1' : '0'); } catch (e) {} document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails'; rendre(); }
@@ -460,11 +464,11 @@ function dessiner(v, lap) {
   for (var i = 1; i < pts.length; i++) { g.strokeStyle = couleur((pts[i - 1].kmh + pts[i].kmh) / 2, vmin, vmax); g.beginPath(); g.moveTo(X(pts[i - 1].dx, pts[i - 1].dy), Y(pts[i - 1].dx, pts[i - 1].dy)); g.lineTo(X(pts[i].dx, pts[i].dy), Y(pts[i].dx, pts[i].dy)); g.stroke(); }
   g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(X(pts[0].dx, pts[0].dy), Y(pts[0].dx, pts[0].dy), 5, 0, Math.PI * 2); g.fill(); g.stroke();
   // [v10] l'axe du circuit reconnu (fin, blanc) et les bornes des partielles (traits magenta)
-  if (circVue && circVue.axe) {
+  if (circVue && circVue.axe && partiellesOn) {
     g.save(); g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 1.5; g.setLineDash([6, 6]); g.beginPath();
     circVue.axe.forEach(function (p, i) { var x = X(p.dx, p.dy), y = Y(p.dx, p.dy); if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); }); g.closePath(); g.stroke(); g.restore();
   }
-  if (circVue && circVue.bornes) {
+  if (circVue && circVue.bornes && partiellesOn) {
     circVue.bornes.forEach(function (b, i) {
       var x = X(b.dx, b.dy), y = Y(b.dx, b.dy);
       g.save(); g.strokeStyle = '#fff'; g.lineWidth = 6; g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.stroke(); g.strokeStyle = '#ff1fd0'; g.lineWidth = 3; g.stroke();
@@ -714,6 +718,7 @@ function circuitRendre(v, lap) {
       + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + meilleurNum[i] : '') + '</td></tr>';
   });
   document.getElementById('tSect').innerHTML = h;
+  document.getElementById('partBloc').style.display = partiellesOn ? '' : 'none'; document.getElementById('circNLabel').style.display = partiellesOn ? '' : 'none';
   document.getElementById('circNote').textContent = 'Bornes à ' + Math.round(res.L / secteursN) + ' m depuis la ligne du tour, dans le sens de roulage (' + (res.sensPos ? m.c.sens : (m.c.sens === 'horaire' ? 'antihoraire' : 'horaire')) + '). Précision : celle de la trace (un point / ' + tr.intervalMs + ' ms).';
   // les bornes pour la carte : abscisse -> point de l'axe -> repere du tour
   var bornes = [];
@@ -759,7 +764,7 @@ try { satVoulu = localStorage.getItem('mt_sat') === '1'; document.getElementById
 document.querySelector('input[name=orient][value=' + carte.mode + ']').checked = true;
 try { details = localStorage.getItem('mt_details') === '1'; } catch (e) {}
 document.getElementById('btnDetails').textContent = details ? 'Masquer les détails' : 'Détails';
-try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; } catch (e) {} document.getElementById('circN').value = secteursN;
+try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; } catch (e) {} document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
 circuitsCharger();
 rendre();
 setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
