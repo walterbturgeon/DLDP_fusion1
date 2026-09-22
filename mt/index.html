@@ -85,7 +85,7 @@
     </div>
     <div class="small" id="tSrc" style="margin-top:6px"></div>
     <div class="row" style="margin-top:8px"><label class="small">Comparer à <select id="compSel" onchange="compChoisir()"><option value="meilleur">meilleur tour</option><option value="precedent">tour précédent</option><option value="aucun">rien (vitesse)</option></select></label> <span class="small" id="compInfo"></span></div>
-    <div class="row" style="margin-top:10px"><label class="small"><input type="checkbox" id="valOn" checked onchange="valeursBascule()"> Valeurs du tour (p1 à p4)</label></div>
+    <div class="row" style="margin-top:10px"><label class="small"><input type="checkbox" id="valOn" checked onchange="valeursBascule()"> Valeurs du tour (p1 à p8)</label></div>
     <table id="tVals" style="margin-top:4px"></table>
     <div id="circBloc" style="margin-top:12px;display:none">
       <div class="row" style="justify-content:space-between">
@@ -139,7 +139,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v19';
+var PAGE_VER = 'MT v20';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -274,6 +274,8 @@ function traiter(mac, p) {
   if (p[0] === 0x01) decodeTour(v, p);
   else if (p[0] === 0x08) decodeValeurs(v, p);
   else if (p[0] === 0x02) decodeTrace(v, p);
+  else if (p[0] === 0x0A) decodeCanaux(v, p);      // [v20] 8 canaux a 1 Hz (PT2.1.37)
+  else if (p[0] === 0x0B) decodeCatalogue(v, p);   // [v20] libelles, unites, echelles de p1..p8
   else jrn('Type inconnu 0x' + p[0].toString(16) + ' pour ' + v.nom);
   sauver(); rendre();
 }
@@ -342,6 +344,59 @@ function decodeTrace(v, b) {
   t.parts[idx] = pts; v.traces[num] = t;
 }
 function traceEntiere(t) { if (!t) return []; var out = []; for (var i = 0; i < t.nb; i++) if (t.parts[i]) out = out.concat(t.parts[i]); return out; }
+// [v20] LES 8 CANAUX A 1 Hz (PT2.1.37). 0x0B = le catalogue (2 parties de 4 canaux : indice, echelle
+// div/off, nom, unite). 0x0A = les echantillons : par seconde de tour, un masque de presence puis
+// p1..p8 sur un octet ; valeur = octet x div + off. L'echantillon k est a t = k s depuis le depart
+// du tour, sur la meme grille que la trace : sa position vient de la trace, par le temps.
+function decodeCatalogue(v, b) {
+  if (b.length < 145) { jrn('Catalogue tronque (' + b.length + ' o) pour ' + v.nom); return; }
+  var dv = new DataView(b.buffer, b.byteOffset), num = dv.getUint16(1, true), part = b[3];
+  if (part > 1) return;
+  var lap = v.laps[num] || { num: num, recuMs: Date.now() };
+  var cat = lap.cat || { lect: b[4], ch: [] }; cat.lect = b[4];
+  for (var k = 0; k < 4; k++) {
+    var idx = b[5 + k];
+    cat.ch[4 * part + k] = idx === 255 ? null : { idx: idx, div: dv.getFloat32(9 + k * 8, true), off: dv.getFloat32(13 + k * 8, true),
+      nom: new TextDecoder().decode(b.subarray(41 + k * 26, 61 + k * 26)).replace(/\0.*$/, ''), unite: new TextDecoder().decode(b.subarray(61 + k * 26, 67 + k * 26)).replace(/\0.*$/, '') };
+  }
+  lap.cat = cat; v.laps[num] = lap;
+}
+function decodeCanaux(v, b) {
+  if (b.length < 10) return;
+  var dv = new DataView(b.buffer, b.byteOffset), num = dv.getUint16(1, true), part = b[3], nb = b[4], n = b[5], s0 = dv.getUint16(6, true);
+  if (b.length < 10 + 9 * n) { jrn('Canaux tronques (' + b.length + ' o, ' + n + ' s) pour ' + v.nom); return; }
+  var lap = v.laps[num] || { num: num, recuMs: Date.now() };
+  var can = lap.can || { nb: nb, parts: {} }; can.nb = nb;
+  var rows = [];
+  for (var i = 0; i < n; i++) { var o = 10 + i * 9, r = [b[o]]; for (var k = 0; k < 8; k++) r.push(b[o + 1 + k]); rows.push(r); }
+  can.parts[part] = { s0: s0, rows: rows };
+  lap.can = can; v.laps[num] = lap;
+}
+// les echantillons d'un tour : tableau indexe par la seconde, [masque, p1..p8] ou undefined
+function canEchantillons(lap) {
+  if (!lap || !lap.can) return [];
+  var out = [];
+  Object.keys(lap.can.parts).forEach(function (p) { var q = lap.can.parts[p]; q.rows.forEach(function (r, i) { out[q.s0 + i] = r; }); });
+  return out;
+}
+// la valeur reelle du canal k a la seconde s (null si absente)
+function canValeur(lap, ech, k, sec) {
+  var r = ech[sec]; if (!r || !(r[0] & (1 << k))) return null;
+  var c = lap.cat && lap.cat.ch[k]; return c ? r[1 + k] * c.div + c.off : r[1 + k];
+}
+// min / moyenne / max / n / seconde du max d'un canal sur le tour
+function canResume(lap, ech, k) {
+  var mn = null, mx = null, som = 0, n = 0, sMax = -1;
+  for (var sec = 0; sec < ech.length; sec++) { var x = canValeur(lap, ech, k, sec); if (x == null) continue; if (mn == null || x < mn) mn = x; if (mx == null || x > mx) { mx = x; sMax = sec; } som += x; n++; }
+  return n ? { min: mn, max: mx, moy: som / n, n: n, sMax: sMax } : null;
+}
+// la position sur la trace a l'instant t (ms depuis le depart), par interpolation
+function positionA(pts, intervalMs, tMs) {
+  if (!pts.length || !intervalMs) return null;
+  var f = tMs / intervalMs, i = Math.floor(f); if (i < 0) return pts[0]; if (i >= pts.length - 1) return pts[pts.length - 1];
+  var a = pts[i], b = pts[i + 1], u = f - i; return { dx: a.dx + u * (b.dx - a.dx), dy: a.dy + u * (b.dy - a.dy) };
+}
+var CAN_COULEURS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#af52de', '#ff2d55'];
 
 // ---- memoire locale : la page rechargee garde ses tours ----
 function sauver() {
@@ -411,15 +466,19 @@ function rendre0() {
   document.getElementById('tSrc').textContent = lap.dureeMs == null ? '⚠ Resume du tour pas encore recu (valeurs ou trace seulement).' : 'Chronometrage : ' + source(lap.source) + (lap.dMax ? ' · jusqu’a ' + lap.dMax + ' m de l’origine' : '');
   // les 4 valeurs
   var tv = document.getElementById('tVals'); tv.style.display = valeursOn ? '' : 'none';
-  if (lap.pv) {
-    var h = '<tr><th>Valeur</th><th class="num">Min</th><th class="num">Moy</th><th class="num">Max</th><th class="num">n</th><th></th></tr>';
-    lap.pv.items.forEach(function (it) {
-      if (it.idx === 255) return;
-      var nom = it.nom || ('canal ' + it.idx), dec = Math.abs(it.max) >= 100 ? 0 : 1;
-      h += '<tr><td>' + nom + '</td><td class="num">' + it.min.toFixed(dec) + '</td><td class="num"><b>' + it.moy.toFixed(dec) + '</b></td><td class="num">' + it.max.toFixed(dec) + '</td><td class="num small">' + it.n + '</td><td class="small">' + it.unite + '</td></tr>';
-    });
-    tv.innerHTML = h;
-  } else tv.innerHTML = '<tr><td class="small">Les 4 valeurs de ce tour ne sont pas encore recues.</td></tr>';
+  // [v20] p1..p4 viennent du resume 0x08 (exacts), p5..p8 des echantillons 0x0A a 1 Hz ; le point de couleur = le marqueur du MAX sur la carte
+  var ech = canEchantillons(lap), hv = '', nbLignes = 0;
+  for (var k = 0; k < 8; k++) {
+    var it = k < 4 && lap.pv ? lap.pv.items[k] : null, c = lap.cat && lap.cat.ch[k], rs = canResume(lap, ech, k);
+    if (it && it.idx === 255) it = null;
+    if (!it && !rs) continue;
+    var nom = (it && it.nom) || (c && c.nom) || ('canal ' + (it ? it.idx : c ? c.idx : k)), unite = (it && it.unite) || (c && c.unite) || '';
+    var mn = it ? it.min : rs.min, mx = it ? it.max : rs.max, moy = it ? it.moy : rs.moy, n = it ? it.n : rs.n, dec = Math.abs(mx) >= 100 ? 0 : 1;
+    hv += '<tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + CAN_COULEURS[k] + ';margin-right:6px;vertical-align:middle"></span>' + nom + '</td><td class="num">' + mn.toFixed(dec) + '</td><td class="num"><b>' + moy.toFixed(dec) + '</b></td><td class="num">' + mx.toFixed(dec) + '</td><td class="num small">' + n + (it ? '' : ' <span title="echantillons a 1 Hz">(1 Hz)</span>') + '</td><td class="small">' + unite + '</td></tr>';
+    nbLignes++;
+  }
+  if (nbLignes) tv.innerHTML = '<tr><th>Valeur</th><th class="num">Min</th><th class="num">Moy</th><th class="num">Max</th><th class="num">n</th><th></th></tr>' + hv;
+  else tv.innerHTML = '<tr><td class="small">Les valeurs de ce tour ne sont pas encore recues.</td></tr>';
   circuitRendre(v, lap);   // [v10]
   dessiner(v, lap);
 }
@@ -574,6 +633,22 @@ function dessiner(v, lap) {
       g.fillStyle = '#ff1fd0'; g.font = 'bold 12px system-ui'; g.fillText('P' + (i + 2), x + 10, y - 8); g.restore();
     });
   }
+  // [v20] LES MAX DES CANAUX : un point de couleur la ou chaque canal a atteint son maximum (demande du 21 sept. 2026 :
+  // les max seulement, pas les min). La position vient du temps : seconde du max -> instant -> point de la trace.
+  if (valeursOn && lap.can) {
+    var echM = canEchantillons(lap), trM = v.traces[lap.num], etiq = [];
+    for (var kc = 0; kc < 8; kc++) {
+      var rsM = canResume(lap, echM, kc); if (!rsM || rsM.sMax < 0) continue;
+      var pM = positionA(pts, trM && trM.intervalMs, rsM.sMax * 1000); if (!pM) continue;
+      var cM = lap.cat && lap.cat.ch[kc], nomM = (cM && cM.nom) || ('p' + (kc + 1)), decM = Math.abs(rsM.max) >= 100 ? 0 : 1;
+      etiq.push({ x: X(pM.dx, pM.dy), y: Y(pM.dx, pM.dy), k: kc, txt: nomM.slice(0, 12) + ' ' + rsM.max.toFixed(decM) + (cM && cM.unite ? ' ' + cM.unite : '') });
+    }
+    etiq.forEach(function (e, i) {
+      g.save(); g.beginPath(); g.arc(e.x, e.y, 6, 0, Math.PI * 2); g.fillStyle = CAN_COULEURS[e.k]; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
+      g.font = 'bold 11px system-ui'; var tw = g.measureText(e.txt).width, ex = Math.min(w - tw - 8, Math.max(2, e.x + 9)), ey = e.y + (i % 2 ? 16 : -8);
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(ex - 2, ey - 10, tw + 4, 13); g.fillStyle = CAN_COULEURS[e.k]; g.fillText(e.txt, ex, ey); g.restore();
+    });
+  }
   // la boussole : une fleche vers le nord, en haut a droite
   g.save(); g.translate(w - 22, 24); g.rotate(-theta);
   g.fillStyle = '#ff1fd0'; g.strokeStyle = '#fff'; g.lineWidth = 1.5;
@@ -669,13 +744,19 @@ function csvTelecharger(nom, texte) {
 }
 function csvChamp(x) { x = String(x == null ? '' : x); return /[;"\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }
 function toursCsv() {
-  var lignes = ['voiture;mac;num;tour;temps_s;ecart_precedent_s;chrono;recu;p1_nom;p1_unite;p1_min;p1_moy;p1_max;p1_n;p2_nom;p2_unite;p2_min;p2_moy;p2_max;p2_n;p3_nom;p3_unite;p3_min;p3_moy;p3_max;p3_n;p4_nom;p4_unite;p4_min;p4_moy;p4_max;p4_n;origine_lat;origine_lon;dist_max_m;points_trace'];
+  var lignes = ['voiture;mac;num;tour;temps_s;ecart_precedent_s;chrono;recu;p1_nom;p1_unite;p1_min;p1_moy;p1_max;p1_n;p2_nom;p2_unite;p2_min;p2_moy;p2_max;p2_n;p3_nom;p3_unite;p3_min;p3_moy;p3_max;p3_n;p4_nom;p4_unite;p4_min;p4_moy;p4_max;p4_n;p5_nom;p5_unite;p5_min;p5_moy;p5_max;p5_n;p6_nom;p6_unite;p6_min;p6_moy;p6_max;p6_n;p7_nom;p7_unite;p7_min;p7_moy;p7_max;p7_n;p8_nom;p8_unite;p8_min;p8_moy;p8_max;p8_n;origine_lat;origine_lon;dist_max_m;points_trace'];
   ordreVoitures.forEach(function (m) {
     var v = voitures[m], laps = lapsTries(v);
     laps.forEach(function (l, i) {
       var prec = i > 0 ? laps[i - 1] : null;
       var r = [v.nom, m, v.num, l.num, l.dureeMs != null ? (l.dureeMs / 1000).toFixed(3) : '', prec && prec.dureeMs != null && l.dureeMs != null ? ((l.dureeMs - prec.dureeMs) / 1000).toFixed(3) : '', source(l.source), l.recuMs ? new Date(l.recuMs).toISOString() : ''];
-      for (var k = 0; k < 4; k++) { var it = l.pv && l.pv.items[k]; if (it && it.idx !== 255) r.push(it.nom || ('canal ' + it.idx), it.unite, +it.min.toFixed(3), +it.moy.toFixed(3), +it.max.toFixed(3), it.n); else r.push('', '', '', '', '', ''); }
+      var echC = canEchantillons(l);   // [v20] p1..p4 du resume, p5..p8 des echantillons a 1 Hz
+      for (var k = 0; k < 8; k++) {
+        var it = k < 4 && l.pv ? l.pv.items[k] : null, c = l.cat && l.cat.ch[k], rs = it && it.idx !== 255 ? null : canResume(l, echC, k);
+        if (it && it.idx !== 255) r.push(it.nom || ('canal ' + it.idx), it.unite, +it.min.toFixed(3), +it.moy.toFixed(3), +it.max.toFixed(3), it.n);
+        else if (rs) r.push((c && c.nom) || ('p' + (k + 1)), (c && c.unite) || '', +rs.min.toFixed(3), +rs.moy.toFixed(3), +rs.max.toFixed(3), rs.n);
+        else r.push('', '', '', '', '', '');
+      }
       r.push(l.oLat != null ? l.oLat.toFixed(7) : '', l.oLon != null ? l.oLon.toFixed(7) : '', l.dMax != null ? l.dMax : '', traceEntiere(v.traces[l.num]).length);
       lignes.push(r.map(csvChamp).join(';'));
     });
