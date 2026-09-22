@@ -139,7 +139,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v16';
+var PAGE_VER = 'MT v17';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -362,7 +362,17 @@ function duree(ms) {   // [v16] m:ss.cc
 function dureeCourte(ms) { if (ms == null) return '—'; return ms < 60000 ? (ms / 1000).toFixed(2) + ' s' : duree(ms); }
 function ecartTexte(d) { if (d == null) return '—'; return (d > 0 ? '+' : '') + (d / 1000).toFixed(2) + ' s'; }
 function lapsTries(v) { return Object.keys(v.laps).map(Number).sort(function (a, b) { return a - b; }).map(function (n) { return v.laps[n]; }); }
-function rendre() {
+function rendre() {   // [v17] la position verticale est gardee : seul le doigt fait defiler
+  var sy = window.scrollY || window.pageYOffset || 0;
+  try { rendre0(); } finally {
+    // si le contenu a raccourci, on reserve la place au bas de la page pour ne pas remonter
+    document.body.style.minHeight = '';
+    var besoin = sy + window.innerHeight, haut = document.documentElement.scrollHeight;
+    document.body.style.minHeight = haut < besoin ? besoin + 'px' : '';
+    if (Math.abs((window.scrollY || 0) - sy) > 1) window.scrollTo(0, sy);
+  }
+}
+function rendre0() {
   var tabs = document.getElementById('tabs'); tabs.innerHTML = '';
   ordreVoitures.forEach(function (m) {
     var v = voitures[m]; var portee = v.vuMs && (Date.now() - v.vuMs) < 30000;
@@ -467,12 +477,16 @@ function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) 
 function dessiner(v, lap) {
   var c = document.getElementById('carte'), lg = document.getElementById('carteLeg');
   var pts = traceEntiere(v.traces[lap.num]);
-  if (pts.length < 2) { c.style.display = 'none'; lg.textContent = 'Trace pas encore recue.'; proj = null; return; }
   c.style.display = '';
   var dpr = window.devicePixelRatio || 1, w = c.clientWidth || 600;
   var h = Math.max(180, Math.min(460, Math.round(w * 0.72), Math.round(window.innerHeight * 0.55)));
   c.style.height = h + 'px'; c.width = w * dpr; c.height = h * dpr;
   var g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  if (pts.length < 2) {   // [v17] la carte garde sa place : la page ne raccourcit pas
+    lg.textContent = 'Trace pas encore recue.'; proj = null;
+    g.fillStyle = '#9a9a9a'; g.font = '14px system-ui'; g.textAlign = 'center'; g.fillText('Trace pas encore re\u00e7ue', w / 2, h / 2); g.textAlign = 'left';
+    return;
+  }
   var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
   var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
   var theta = (carte.mode === 'nord' ? 0 : angleMax(pts, w, h)) + carte.rot;

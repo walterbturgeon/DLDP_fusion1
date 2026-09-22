@@ -4,7 +4,7 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v16';   // v16 : temps des tours en m:ss.cc
+const CACHE = PREFIX + 'v17';   // v17 : la page ne remonte plus a chaque rendu, la carte garde sa hauteur
 const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg', '../circuits_index.csv', '../circuits_offsets.csv'];
 
 self.addEventListener('install', (ev) => {
