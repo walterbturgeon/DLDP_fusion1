@@ -35,6 +35,10 @@
   td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
   tr.sel td { background:rgba(10,102,194,.12); }
   tr.clic { cursor:pointer; }
+  .jour { font-weight:600; margin:14px 0 4px; padding-bottom:4px; border-bottom:2px solid var(--line); }
+  details.session { margin:6px 0; border:1px solid var(--line); border-radius:8px; padding:4px 8px; }
+  details.session summary { color:inherit; font-weight:600; padding:4px 0; }
+  details.session summary .small { font-weight:400; }
   .grand { font-size:2em; font-weight:600; font-variant-numeric:tabular-nums; }
   .grille { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
   canvas { width:100%; border-radius:10px; display:block; background:#fafafa; }
@@ -78,13 +82,13 @@
 
   <div class="card" id="tourCard" style="display:none">
     <div class="grille">
-      <div><div class="small">Tour</div><div class="grand" id="tNum"></div></div>
+      <div><div class="small">Tour</div><div class="grand" id="tNum"></div><div class="small" id="tSess"></div></div>
       <div><div class="small">Temps</div><div class="grand" id="tTemps"></div></div>
       <div><div class="small">Écart vs précédent</div><div class="grand" id="tEcart"></div></div>
-      <div><div class="small">Écart vs meilleur</div><div class="grand" id="tBest"></div></div>
+      <div><div class="small">Écart vs meilleur (session)</div><div class="grand" id="tBest"></div></div>
     </div>
     <div class="small" id="tSrc" style="margin-top:6px"></div>
-    <div class="row" style="margin-top:8px"><label class="small">Comparer à <select id="compSel" onchange="compChoisir()"><option value="meilleur">meilleur tour</option><option value="precedent">tour précédent</option><option value="aucun">rien (vitesse)</option></select></label> <span class="small" id="compInfo"></span></div>
+    <div class="row" style="margin-top:8px"><label class="small">Comparer à <select id="compSel" onchange="compChoisir()"><option value="meilleur">meilleur tour de la session</option><option value="jour">meilleur tour de la journée</option><option value="precedent">tour précédent</option><option value="aucun">rien (vitesse)</option></select></label> <span class="small" id="compInfo"></span></div>
     <div class="row" style="margin-top:10px"><label class="small"><input type="checkbox" id="valOn" checked onchange="valeursBascule()"> Valeurs du tour (p1 à p8)</label></div>
     <table id="tVals" style="margin-top:4px"></table>
     <div id="circBloc" style="margin-top:12px;display:none">
@@ -111,7 +115,7 @@
 
   <div class="card">
     <div class="small" style="letter-spacing:.08em;margin-bottom:6px">TOURS</div>
-    <table id="tours"><thead><tr><th>#</th><th class="num">Temps</th><th class="num">Écart</th><th>Chrono</th><th class="num">Reçu</th></tr></thead><tbody></tbody></table>
+    <div id="toursBloc"></div>
   </div>
 </div>
 
@@ -139,7 +143,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v20';
+var PAGE_VER = 'MT v21';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -152,7 +156,7 @@ var compRef = null;          // le tour de reference du rendu courant, ou null
 function compChoisir() { compMode = document.getElementById('compSel').value; try { localStorage.setItem('mt_comp', compMode); } catch (e) {} rendre(); }
 function compReference(v, lap) {
   if (compMode === 'aucun') return null;
-  var laps = lapsTries(v).filter(function (l) { return l.dureeMs != null && traceEntiere(v.traces[l.num]).length >= 10; });
+  var laps = (compMode === 'jour' ? lapsJour(v, lap) : lapsSession(v, lap)).filter(function (l) { return l.dureeMs != null && traceEntiere(v.traces[l.num]).length >= 10; });   // [v21] dans la session
   var i = laps.indexOf(lap);
   if (compMode === 'precedent') { for (var k = (i >= 0 ? i : laps.length) - 1; k >= 0; k--) if (laps[k] !== lap) return laps[k]; return null; }
   var best = null; laps.forEach(function (l) { if (l !== lap && (!best || l.dureeMs < best.dureeMs)) best = l; });
@@ -316,7 +320,7 @@ function decodeTour(v, b) {
   if (!lap.recuMs) lap.recuMs = Date.now();
   v.laps[num] = lap;
   if (vueMac === v.mac) vueTour = num;
-  jrn(v.nom + ' : tour #' + num + ' ' + duree(lap.dureeMs));
+  jrn(v.nom + ' : tour #' + lapNumAff(lap) + (num >= 200 ? ' (session ' + Math.floor(num / 200) + ')' : '') + ' ' + duree(lap.dureeMs));
 }
 function decodeValeurs(v, b) {
   if (b.length < 60) return;
@@ -358,6 +362,10 @@ function decodeCatalogue(v, b) {
     var idx = b[5 + k];
     cat.ch[4 * part + k] = idx === 255 ? null : { idx: idx, div: dv.getFloat32(9 + k * 8, true), off: dv.getFloat32(13 + k * 8, true),
       nom: new TextDecoder().decode(b.subarray(41 + k * 26, 61 + k * 26)).replace(/\0.*$/, ''), unite: new TextDecoder().decode(b.subarray(61 + k * 26, 67 + k * 26)).replace(/\0.*$/, '') };
+  }
+  if (part === 0 && b.length >= 158) {   // [v21] PT2.1.39 : UTC de la session, du debut et de la fin du tour, motif
+    var su = dv.getUint32(145, true), du = dv.getUint32(149, true), fu = dv.getUint32(153, true);
+    if (su) lap.sessionUtc = su; if (du) lap.debutUtc = du; if (fu) lap.finUtc = fu; lap.motif = b[157];
   }
   lap.cat = cat; v.laps[num] = lap;
 }
@@ -417,6 +425,38 @@ function duree(ms) {   // [v16] m:ss.cc
 function dureeCourte(ms) { if (ms == null) return '—'; return ms < 60000 ? (ms / 1000).toFixed(2) + ' s' : duree(ms); }
 function ecartTexte(d) { if (d == null) return '—'; return (d > 0 ? '+' : '') + (d / 1000).toFixed(2) + ' s'; }
 function lapsTries(v) { return Object.keys(v.laps).map(Number).sort(function (a, b) { return a - b; }).map(function (n) { return v.laps[n]; }); }
+// [v21] LES SESSIONS ET LES JOURNEES. Sur le fil (PT2.1.39), numero = session x 200 + tour : le tour affiche
+// est n % 200, la session est n / 200. La session porte aussi l'UTC de son depart (catalogue 0x0B) ; sans
+// heure (vieux kits), on se rabat sur l'heure de reception. Une journee = la date locale de la session.
+function lapNumAff(l) { return l.num >= 200 ? l.num % 200 : l.num; }
+function lapSessionCle(l) { return l.num >= 200 ? 's' + Math.floor(l.num / 200) : 'n0'; }
+function lapInstantMs(l) { return l.debutUtc ? l.debutUtc * 1000 : (l.recuMs || 0); }
+function jourTexte(ms) { var d = new Date(ms); return d.toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function heureTexte(ms) { var d = new Date(ms); return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+var MOTIFS = { 1: 'demarrage du kit', 2: 'remise a zero', 3: 'apres un arret', 4: 'changement de site', 5: 'session precedente pleine' };
+// les sessions d'une voiture : [{cle, laps (ordre croissant), debutMs, finMs, jour, best, n}] du plus vieux au plus recent
+function sessionsDe(v) {
+  var map = {}, ordre = [];
+  lapsTries(v).forEach(function (l) {
+    var k = lapSessionCle(l); if (!map[k]) { map[k] = { cle: k, laps: [], best: null, motif: l.motif }; ordre.push(k); }
+    var sn = map[k]; sn.laps.push(l); if (l.dureeMs != null && (!sn.best || l.dureeMs < sn.best.dureeMs)) sn.best = l;
+    if (l.motif && !sn.motif) sn.motif = l.motif;
+  });
+  var out = ordre.map(function (k) {
+    var sn = map[k], l0 = sn.laps[0], lN = sn.laps[sn.laps.length - 1];
+    sn.debutMs = l0.sessionUtc ? l0.sessionUtc * 1000 : lapInstantMs(l0); sn.finMs = lN.finUtc ? lN.finUtc * 1000 : (lN.recuMs || sn.debutMs);
+    sn.jour = new Date(sn.debutMs).toDateString(); sn.n = sn.laps.length; return sn;
+  });
+  out.sort(function (a, b) { return a.debutMs - b.debutMs; });
+  // le numero de session dans sa journee (1, 2, 3...)
+  var parJour = {}; out.forEach(function (sn) { parJour[sn.jour] = (parJour[sn.jour] || 0) + 1; sn.numJour = parJour[sn.jour]; });
+  return out;
+}
+function sessionDe(v, lap) { var k = lapSessionCle(lap), r = null; sessionsDe(v).forEach(function (sn) { if (sn.cle === k) r = sn; }); return r; }
+// les tours de la meme session (ordre croissant), ou de la meme journee
+function lapsSession(v, lap) { var sn = sessionDe(v, lap); return sn ? sn.laps : lapsTries(v); }
+function lapsJour(v, lap) { var sn = sessionDe(v, lap), out = []; if (!sn) return lapsTries(v); sessionsDe(v).forEach(function (x) { if (x.jour === sn.jour) out = out.concat(x.laps); }); return out; }
+var sessionsRepliees = {};   // ce que le doigt a replie, garde d'un rendu a l'autre
 function rendre() {   // [v17] la position verticale est gardee : seul le doigt fait defiler
   var sy = window.scrollY || window.pageYOffset || 0;
   try { rendre0(); } finally {
@@ -442,24 +482,34 @@ function rendre0() {
   var v = voitures[vueMac];
   document.getElementById('vNom').textContent = v.nom;
   document.getElementById('vSub').textContent = 'n° ' + v.num + (details ? ' · ' + v.mac + (v.fw ? ' · ' + v.fw : '') : '') + (v.vuMs ? ' · vu il y a ' + Math.round((Date.now() - v.vuMs) / 1000) + ' s' : '');
-  var laps = lapsTries(v);
-  var best = null; laps.forEach(function (l) { if (l.dureeMs != null && (!best || l.dureeMs < best.dureeMs)) best = l; });
-  if (vueTour == null && laps.length) vueTour = laps[laps.length - 1].num;
-  var tb = document.querySelector('#tours tbody'); tb.innerHTML = '';
-  laps.forEach(function (l, i) {
-    var prec = i > 0 ? laps[i - 1] : null;
-    var tr = document.createElement('tr'); tr.className = 'clic' + (l.num === vueTour ? ' sel' : '');
-    tr.innerHTML = '<td>#' + l.num + (best && l === best ? ' ★' : '') + '</td><td class="num">' + duree(l.dureeMs) + '</td><td class="num">'
-      + (prec && prec.dureeMs != null && l.dureeMs != null ? ecartTexte(l.dureeMs - prec.dureeMs) : '—') + '</td><td>' + source(l.source) + '</td><td class="num small">'
-      + (l.recuMs ? new Date(l.recuMs).toTimeString().slice(0, 8) : '') + '</td>';
-    tr.onclick = function () { vueTour = l.num; rendre(); };
-    tb.insertBefore(tr, tb.firstChild);   // [v19] le plus recent en haut
+  var lapsTous = lapsTries(v);
+  if (vueTour == null && lapsTous.length) vueTour = lapsTous[lapsTous.length - 1].num;
+  // [v21] journees -> sessions -> tours (le plus recent en haut a chaque niveau)
+  var sessions = sessionsDe(v), bloc = document.getElementById('toursBloc'), hb = '', jourCourant = null;
+  var derniere = sessions.length ? sessions[sessions.length - 1].cle : null, vueLap = vueTour != null ? v.laps[vueTour] : null, vueCle = vueLap ? lapSessionCle(vueLap) : null;
+  sessions.slice().reverse().forEach(function (sn) {
+    if (sn.jour !== jourCourant) { jourCourant = sn.jour; hb += '<div class="jour">' + jourTexte(sn.debutMs) + '</div>'; }
+    var ouverte = sessionsRepliees[sn.cle] != null ? !sessionsRepliees[sn.cle] : (sn.cle === derniere || sn.cle === vueCle);
+    hb += '<details class="session" data-cle="' + sn.cle + '"' + (ouverte ? ' open' : '') + '><summary>Session ' + sn.numJour + ' <span class="small">· ' + heureTexte(sn.debutMs) + (sn.finMs > sn.debutMs ? ' – ' + heureTexte(sn.finMs) : '') + ' · ' + sn.n + ' tour' + (sn.n > 1 ? 's' : '') + (sn.best ? ' · meilleur ' + duree(sn.best.dureeMs) : '') + (sn.motif && MOTIFS[sn.motif] ? ' · ' + MOTIFS[sn.motif] : '') + '</span></summary>';
+    hb += '<table><thead><tr><th>#</th><th class="num">Temps</th><th class="num">Écart</th><th>Chrono</th><th class="num">Heure</th></tr></thead><tbody>';
+    sn.laps.slice().reverse().forEach(function (l, j) {
+      var prec = sn.laps[sn.laps.length - 2 - j] || null;
+      hb += '<tr class="clic' + (l.num === vueTour ? ' sel' : '') + '" data-num="' + l.num + '"><td>#' + lapNumAff(l) + (sn.best && l === sn.best ? ' ★' : '') + '</td><td class="num">' + duree(l.dureeMs) + '</td><td class="num">'
+        + (prec && prec.dureeMs != null && l.dureeMs != null ? ecartTexte(l.dureeMs - prec.dureeMs) : '—') + '</td><td>' + source(l.source) + '</td><td class="num small">'
+        + (l.finUtc ? new Date(l.finUtc * 1000).toTimeString().slice(0, 8) : l.recuMs ? new Date(l.recuMs).toTimeString().slice(0, 8) + ' (reçu)' : '') + '</td></tr>';
+    });
+    hb += '</tbody></table></details>';
   });
-  var lap = vueTour != null ? v.laps[vueTour] : null;
+  bloc.innerHTML = hb;
+  bloc.querySelectorAll('tr[data-num]').forEach(function (tr) { tr.onclick = function () { vueTour = +tr.getAttribute('data-num'); rendre(); }; });
+  bloc.querySelectorAll('details.session').forEach(function (d) { d.querySelector('summary').onclick = function () { sessionsRepliees[d.getAttribute('data-cle')] = d.open; }; });   // au clic : l'etat d'avant = ce que le doigt replie
+  var lap = vueLap;
   document.getElementById('tourCard').style.display = lap ? '' : 'none';
   if (!lap) return;
+  var laps = lapsSession(v, lap), sess = sessionDe(v, lap), best = sess ? sess.best : null;
   var i = laps.indexOf(lap), prec = i > 0 ? laps[i - 1] : null;
-  document.getElementById('tNum').textContent = '#' + lap.num;
+  document.getElementById('tNum').textContent = '#' + lapNumAff(lap);
+  document.getElementById('tSess').textContent = sess ? 'Session ' + sess.numJour + ' · ' + jourTexte(sess.debutMs) + (lap.debutUtc ? ' · ' + new Date(lap.debutUtc * 1000).toTimeString().slice(0, 8) : '') : '';
   document.getElementById('tTemps').textContent = duree(lap.dureeMs);
   document.getElementById('tEcart').textContent = prec && prec.dureeMs != null && lap.dureeMs != null ? ecartTexte(lap.dureeMs - prec.dureeMs) : '—';
   document.getElementById('tBest').textContent = best && lap.dureeMs != null ? (lap === best ? 'meilleur' : ecartTexte(lap.dureeMs - best.dureeMs)) : '—';
@@ -744,12 +794,14 @@ function csvTelecharger(nom, texte) {
 }
 function csvChamp(x) { x = String(x == null ? '' : x); return /[;"\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }
 function toursCsv() {
-  var lignes = ['voiture;mac;num;tour;temps_s;ecart_precedent_s;chrono;recu;p1_nom;p1_unite;p1_min;p1_moy;p1_max;p1_n;p2_nom;p2_unite;p2_min;p2_moy;p2_max;p2_n;p3_nom;p3_unite;p3_min;p3_moy;p3_max;p3_n;p4_nom;p4_unite;p4_min;p4_moy;p4_max;p4_n;p5_nom;p5_unite;p5_min;p5_moy;p5_max;p5_n;p6_nom;p6_unite;p6_min;p6_moy;p6_max;p6_n;p7_nom;p7_unite;p7_min;p7_moy;p7_max;p7_n;p8_nom;p8_unite;p8_min;p8_moy;p8_max;p8_n;origine_lat;origine_lon;dist_max_m;points_trace'];
+  var lignes = ['voiture;mac;num;jour;session;session_debut;tour;tour_fil;tour_debut;tour_fin;temps_s;ecart_precedent_s;chrono;recu;p1_nom;p1_unite;p1_min;p1_moy;p1_max;p1_n;p2_nom;p2_unite;p2_min;p2_moy;p2_max;p2_n;p3_nom;p3_unite;p3_min;p3_moy;p3_max;p3_n;p4_nom;p4_unite;p4_min;p4_moy;p4_max;p4_n;p5_nom;p5_unite;p5_min;p5_moy;p5_max;p5_n;p6_nom;p6_unite;p6_min;p6_moy;p6_max;p6_n;p7_nom;p7_unite;p7_min;p7_moy;p7_max;p7_n;p8_nom;p8_unite;p8_min;p8_moy;p8_max;p8_n;origine_lat;origine_lon;dist_max_m;points_trace'];
   ordreVoitures.forEach(function (m) {
-    var v = voitures[m], laps = lapsTries(v);
+    var v = voitures[m], laps = lapsTries(v), sessions = sessionsDe(v);
     laps.forEach(function (l, i) {
-      var prec = i > 0 ? laps[i - 1] : null;
-      var r = [v.nom, m, v.num, l.num, l.dureeMs != null ? (l.dureeMs / 1000).toFixed(3) : '', prec && prec.dureeMs != null && l.dureeMs != null ? ((l.dureeMs - prec.dureeMs) / 1000).toFixed(3) : '', source(l.source), l.recuMs ? new Date(l.recuMs).toISOString() : ''];
+      var sn = null; sessions.forEach(function (x) { if (x.cle === lapSessionCle(l)) sn = x; });
+      var prec = sn && sn.laps.indexOf(l) > 0 ? sn.laps[sn.laps.indexOf(l) - 1] : null;
+      var iso = function (ms) { return ms ? new Date(ms).toISOString() : ''; };
+      var r = [v.nom, m, v.num, sn ? new Date(sn.debutMs).toISOString().slice(0, 10) : '', sn ? sn.numJour : '', sn ? iso(sn.debutMs) : '', lapNumAff(l), l.num, iso(l.debutUtc ? l.debutUtc * 1000 : 0), iso(l.finUtc ? l.finUtc * 1000 : 0), l.dureeMs != null ? (l.dureeMs / 1000).toFixed(3) : '', prec && prec.dureeMs != null && l.dureeMs != null ? ((l.dureeMs - prec.dureeMs) / 1000).toFixed(3) : '', source(l.source), l.recuMs ? new Date(l.recuMs).toISOString() : ''];
       var echC = canEchantillons(l);   // [v20] p1..p4 du resume, p5..p8 des echantillons a 1 Hz
       for (var k = 0; k < 8; k++) {
         var it = k < 4 && l.pv ? l.pv.items[k] : null, c = l.cat && l.cat.ch[k], rs = it && it.idx !== 255 ? null : canResume(l, echC, k);
@@ -872,7 +924,7 @@ function circuitRendre(v, lap) {
   var bloc = document.getElementById('circBloc'); bloc.style.display = 'none'; circVue = null;
   { var ref0 = compReference(v, lap), ci0 = document.getElementById('compInfo');
     if (!ref0) ci0.textContent = compMode === 'aucun' ? '' : (compMode === 'precedent' ? 'pas de tour précédent avec trace' : 'pas d\u2019autre tour avec trace à comparer');
-    else ci0.innerHTML = 'vs <b>#' + ref0.num + '</b> (' + duree(ref0.dureeMs) + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref0.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref0.dureeMs) + '</b>' : ''); }
+    else ci0.innerHTML = 'vs <b>#' + lapNumAff(ref0) + '</b> (' + duree(ref0.dureeMs) + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref0.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref0.dureeMs) + '</b>' : ''); }
   if (!circuits) { if (circErreur) document.getElementById('circNote').textContent = 'Base de circuits : ' + circErreur; return; }
   var pts = traceEntiere(v.traces[lap.num]), m = circuitPourTour(lap, pts);
   if (!m) return;
@@ -882,7 +934,7 @@ function circuitRendre(v, lap) {
   document.getElementById('circInfo').textContent = 'reconnu (écart médian ' + m.med.toFixed(0) + ' m, ' + Math.round(m.couv * 100) + ' % de l\u2019axe, ' + m.c.longueur.toFixed(0) + ' m)';
   if (!res) { document.getElementById('tSect').innerHTML = ''; document.getElementById('circNote').textContent = 'Pas de base de temps dans la trace : partielles impossibles.'; return; }
   // le meilleur tour de cette voiture sur ce circuit, pour les ecarts
-  var laps = lapsTries(v), meilleurs = null, meilleurNum = null;
+  var laps = (compMode === 'jour' ? lapsJour(v, lap) : lapsSession(v, lap)), meilleurs = null, meilleurNum = null;   // [v21] dans la session
   laps.forEach(function (l) {
     if (l.dureeMs == null) return; var p2 = traceEntiere(v.traces[l.num]); var m2 = circuitPourTour(l, p2); if (!m2 || m2.c.id !== m.c.id) return;
     var r2 = secteursCalculer(l, p2, m2, secteursN, v.traces[l.num].intervalMs); if (!r2) return;
@@ -892,19 +944,19 @@ function circuitRendre(v, lap) {
   // [v15] les partielles du tour de reference, pour la colonne « vs #ref »
   var ref = compReference(v, lap), refSect = null;
   if (ref) { var pr = traceEntiere(v.traces[ref.num]), mr = circuitPourTour(ref, pr); if (mr && mr.c.id === m.c.id) { var rr = secteursCalculer(ref, pr, mr, secteursN, v.traces[ref.num].intervalMs); if (rr) refSect = rr.sect; } }
-  var h = '<tr><th>Partielle</th><th class="num">Temps</th>' + (ref ? '<th class="num">vs #' + ref.num + '</th>' : '') + '<th class="num">Écart vs meilleure</th><th class="small">Meilleure</th></tr>';
+  var h = '<tr><th>Partielle</th><th class="num">Temps</th>' + (ref ? '<th class="num">vs #' + lapNumAff(ref) + '</th>' : '') + '<th class="num">Écart vs meilleure</th><th class="small">Meilleure</th></tr>';
   var gagne = [], perd = [];
   res.sect.forEach(function (x, i) {
     var mb = meilleurs ? meilleurs[i] : null, rs = refSect ? refSect[i] : null, dr = (x != null && rs != null) ? x - rs : null;
     if (dr != null) (dr <= 0 ? gagne : perd).push('P' + (i + 1));
     h += '<tr><td>P' + (i + 1) + ' <span class="small">(' + Math.round(i * res.L / secteursN) + '–' + Math.round((i + 1) * res.L / secteursN) + ' m)</span></td><td class="num"><b>' + dureeCourte(x) + '</b></td>'
       + (ref ? '<td class="num">' + (dr != null ? '<span style="color:' + (dr <= 0 ? 'var(--ok)' : 'var(--warn)') + ';font-weight:600">' + ecartTexte(dr) + '</span>' : '\u2014') + '</td>' : '')
-      + '<td class="num">' + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + meilleurNum[i] : '') + '</td></tr>';
+      + '<td class="num">' + (x != null && mb != null ? (x - mb <= 0 ? '<span style="color:var(--ok)">' : '') + ecartTexte(x - mb) + (x - mb <= 0 ? '</span>' : '') : '\u2014') + '</td><td class="small">' + (meilleurNum && meilleurNum[i] != null ? '#' + lapNumAff(v.laps[meilleurNum[i]]) : '') + '</td></tr>';
   });
   document.getElementById('tSect').innerHTML = h;
   var ci = document.getElementById('compInfo');
   if (!ref) ci.textContent = compMode === 'aucun' ? '' : (compMode === 'precedent' ? 'pas de tour précédent avec trace' : 'pas d\u2019autre tour avec trace à comparer');
-  else ci.innerHTML = 'vs <b>#' + ref.num + '</b> (' + duree(ref.dureeMs) + ', ' + (compMode === 'meilleur' ? 'meilleur' : 'précédent') + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref.dureeMs) + '</b>' : '')
+  else ci.innerHTML = 'vs <b>#' + lapNumAff(ref) + '</b> (' + duree(ref.dureeMs) + ', ' + (compMode === 'meilleur' ? 'meilleur de la session' : compMode === 'jour' ? 'meilleur de la journée' : 'précédent') + ') : ' + (lap.dureeMs != null ? '<b style="color:' + (lap.dureeMs - ref.dureeMs <= 0 ? 'var(--ok)' : 'var(--warn)') + '">' + ecartTexte(lap.dureeMs - ref.dureeMs) + '</b>' : '')
       + (refSect ? ' · gagne ' + (gagne.length ? gagne.join(' ') : '\u2014') + ', perd ' + (perd.length ? perd.join(' ') : '\u2014') : '');
   document.getElementById('partBloc').style.display = partiellesOn ? '' : 'none'; document.getElementById('circNLabel').style.display = partiellesOn ? '' : 'none';
   document.getElementById('circNote').textContent = 'Bornes à ' + Math.round(res.L / secteursN) + ' m depuis la ligne du tour, dans le sens de roulage (' + (res.sensPos ? m.c.sens : (m.c.sens === 'horaire' ? 'antihoraire' : 'horaire')) + '). Précision : celle de la trace (un point / ' + tr.intervalMs + ' ms).';
