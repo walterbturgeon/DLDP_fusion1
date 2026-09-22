@@ -139,7 +139,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v17';
+var PAGE_VER = 'MT v18';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -471,9 +471,27 @@ function angleMax(pts, w, h) {
   var n = pts.length, mx = 0, my = 0; pts.forEach(function (p) { mx += p.dx; my += p.dy; }); mx /= n; my /= n;
   var sxx = 0, syy = 0, sxy = 0; pts.forEach(function (p) { var x = p.dx - mx, y = p.dy - my; sxx += x * x; syy += y * y; sxy += x * y; });
   var a = 0.5 * Math.atan2(2 * sxy, sxx - syy);   // direction du grand axe (radians, depuis l'est vers le nord)
-  return (w >= h) ? -a : (Math.PI / 2 - a);          // canevas large : grand axe horizontal ; haut : vertical
+  var t = (w >= h) ? -a : (Math.PI / 2 - a);        // canevas large : grand axe horizontal ; haut : vertical
+  // [v18] le grand axe a deux sens ; on prend celui qui garde le nord vers le HAUT (ou a droite s'il est couche).
+  // Sans ca, un tour a peine different faisait basculer la carte de 180 degres (tour #7 du 21 sept. 2026, nord a gauche).
+  var cn = Math.cos(t), sn = Math.sin(t);
+  if (cn < -1e-6 || (Math.abs(cn) <= 1e-6 && sn < 0)) t += Math.PI;
+  return t;
 }
 function couleur(kmh, min, max) { var u = max > min ? (kmh - min) / (max - min) : 0.5; return 'hsl(' + (140 - 140 * Math.max(0, Math.min(1, u))) + ', 85%, 50%)'; }
+// [v18] les points de toutes les traces de la voiture sur le meme site (origine a moins de 3 km),
+// ramenes dans le repere du tour affiche : c'est le cadre commun de la carte.
+function cadreSite(v, lap, pts) {
+  if (lap.oLat == null || (Math.abs(lap.oLat) < 1e-4 && Math.abs(lap.oLon) < 1e-4)) return pts;
+  var R0 = 6371000, rad0 = Math.PI / 180, cosLat = Math.cos(lap.oLat * rad0), out = pts.slice();
+  Object.keys(v.laps).forEach(function (n) {
+    var l = v.laps[n]; if (l === lap || l.oLat == null || (Math.abs(l.oLat) < 1e-4 && Math.abs(l.oLon) < 1e-4)) return;
+    var ox = (l.oLon - lap.oLon) * rad0 * R0 * cosLat, oy = (l.oLat - lap.oLat) * rad0 * R0;
+    if (Math.hypot(ox, oy) > 3000) return;   // un autre site
+    traceEntiere(v.traces[l.num]).forEach(function (p) { out.push({ dx: p.dx + ox, dy: p.dy + oy }); });
+  });
+  return out;
+}
 function dessiner(v, lap) {
   var c = document.getElementById('carte'), lg = document.getElementById('carteLeg');
   var pts = traceEntiere(v.traces[lap.num]);
@@ -487,12 +505,13 @@ function dessiner(v, lap) {
     g.fillStyle = '#9a9a9a'; g.font = '14px system-ui'; g.textAlign = 'center'; g.fillText('Trace pas encore re\u00e7ue', w / 2, h / 2); g.textAlign = 'left';
     return;
   }
-  var xs = pts.map(function (p) { return p.dx; }), ys = pts.map(function (p) { return p.dy; });
+  var cadre = cadreSite(v, lap, pts);   // [v18] l'union des traces du site, dans le repere de ce tour
+  var xs = cadre.map(function (p) { return p.dx; }), ys = cadre.map(function (p) { return p.dy; });
   var cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2, cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
-  var theta = (carte.mode === 'nord' ? 0 : angleMax(pts, w, h)) + carte.rot;
-  // l'echelle de base : le trace TOURNE doit tenir dans le canevas
+  var theta = (carte.mode === 'nord' ? 0 : angleMax(cadre, w, h)) + carte.rot;
+  // l'echelle de base : le CADRE tourne doit tenir dans le canevas
   var cos = Math.cos(theta), sin = Math.sin(theta), minU = 1e9, maxU = -1e9, minV = 1e9, maxV = -1e9;
-  pts.forEach(function (p) { var x = p.dx - cx, y = p.dy - cy; var u = x * cos - y * sin, vv = x * sin + y * cos; if (u < minU) minU = u; if (u > maxU) maxU = u; if (vv < minV) minV = vv; if (vv > maxV) maxV = vv; });
+  cadre.forEach(function (p) { var x = p.dx - cx, y = p.dy - cy; var u = x * cos - y * sin, vv = x * sin + y * cos; if (u < minU) minU = u; if (u > maxU) maxU = u; if (vv < minV) minV = vv; if (vv > maxV) maxV = vv; });
   var pad = 24, s0 = Math.min((w - 2 * pad) / Math.max(maxU - minU, 1), (h - 2 * pad) / Math.max(maxV - minV, 1));
   var s = s0 * carte.zoom;
   // [v9] ⚠ ON CENTRE LA BOITE TOURNEE, PAS LE CENTRE TOURNE. Le centre de la boite des points non
