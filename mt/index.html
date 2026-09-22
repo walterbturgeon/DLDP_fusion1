@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TRACKLOGICS MT</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="../icon-192.png" type="image/png">
+<link rel="icon" href="icon-mt-192.png" type="image/png"><link rel="apple-touch-icon" href="icon-mt-192.png">
 <meta name="theme-color" content="#111111">
 <style>
   :root { --bg:#f7f7f7; --card:#fff; --ink:#111; --muted:#666; --line:#e2e2e2; --ok:#1c8f4a; --warn:#c0392b; --accent:#0a66c2; --tab:#eee; }
@@ -121,6 +121,8 @@
 
 <div class="card">
   <div class="row"><button class="btn sec" id="btnDetails" onclick="detailsBascule()">Détails</button><span class="small">Numéros de série (MAC) et versions des boîtes.</span></div>
+  <div class="row" style="margin-top:8px"><button class="btn sec" onclick="sauvegarder()">Sauvegarder (fichier)</button><button class="btn sec" onclick="document.getElementById('fichierRestaure').click()">Restaurer</button><input type="file" id="fichierRestaure" accept=".json,application/json" style="display:none" onchange="restaurer(this.files[0]); this.value=''"></div>
+  <div class="small" id="memEtat" style="margin-top:6px"></div>
 </div>
 
 <div class="card">
@@ -143,7 +145,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v21';
+var PAGE_VER = 'MT v22';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -281,6 +283,7 @@ function traiter(mac, p) {
   else if (p[0] === 0x0A) decodeCanaux(v, p);      // [v20] 8 canaux a 1 Hz (PT2.1.37)
   else if (p[0] === 0x0B) decodeCatalogue(v, p);   // [v20] libelles, unites, echelles de p1..p8
   else jrn('Type inconnu 0x' + p[0].toString(16) + ' pour ' + v.nom);
+  marquer(mac, p.length >= 3 ? (p[1] | (p[2] << 8)) : null);   // [v22]
   sauver(); rendre();
 }
 function macTexte(a) { var s = []; for (var i = 0; i < 6; i++) s.push(('0' + a[i].toString(16)).slice(-2).toUpperCase()); return s.join(':'); }
@@ -305,6 +308,7 @@ function decodeIdent(idx, p) {
   var reste = [];
   enAttente.forEach(function (a) { if (a.idx === idx) traiter(mac, a.p); else reste.push(a); });
   enAttente = reste;
+  marquer(mac, null);   // [v22]
   sauver(); rendre();
 }
 function decodeTour(v, b) {
@@ -407,10 +411,96 @@ function positionA(pts, intervalMs, tMs) {
 var CAN_COULEURS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#af52de', '#ff2d55'];
 
 // ---- memoire locale : la page rechargee garde ses tours ----
-function sauver() {
-  try { localStorage.setItem('mt_voitures', JSON.stringify({ ordre: ordreVoitures, voitures: voitures })); } catch (e) {}
+// [v22] LA VRAIE MEMOIRE. localStorage plafonne a ~5 Mo (un tour avec trace et 8 canaux = 10-15 ko : une
+// journee a 3 voitures y tenait a peine) et le navigateur peut l'effacer. IndexedDB : des centaines de Mo,
+// un enregistrement par tour (cle voiture|numero) et un par voiture ; navigator.storage.persist() demande
+// au navigateur de ne jamais evincer (accorde d'office a une PWA installee). Sauvegarde/restauration en
+// fichier .json pour la copie hors tablette. L'ancien localStorage est importe une fois, puis retire.
+var db = null, dbSales = {}, dbVoituresSales = {}, dbMinuterie = null, dbEcrits = 0, dbErreurs = 0;
+function dbOuvrir() {
+  return new Promise(function (res, rej) {
+    if (!window.indexedDB) { rej(new Error('IndexedDB absente')); return; }
+    var r = indexedDB.open('trlg_mt', 1);
+    r.onupgradeneeded = function (e) { var d = e.target.result; if (!d.objectStoreNames.contains('voitures')) d.createObjectStore('voitures', { keyPath: 'mac' }); if (!d.objectStoreNames.contains('tours')) d.createObjectStore('tours', { keyPath: 'cle' }); };
+    r.onsuccess = function (e) { db = e.target.result; res(db); };
+    r.onerror = function () { rej(r.error); };
+  });
+}
+function marquer(mac, num) { if (num != null) dbSales[mac + '|' + num] = true; dbVoituresSales[mac] = true; }
+function sauver() {   // regroupe les ecritures : au plus une rafale par 300 ms
+  if (dbMinuterie) return; dbMinuterie = setTimeout(sauverMaintenant, 300);
+}
+function sauverMaintenant() {
+  dbMinuterie = null;
+  if (!db) { try { localStorage.setItem('mt_voitures', JSON.stringify({ ordre: ordreVoitures, voitures: voitures })); } catch (e) {} return; }   // secours : la base n'est pas ouverte
+  var tx = db.transaction(['voitures', 'tours'], 'readwrite'), sv = tx.objectStore('voitures'), st = tx.objectStore('tours');
+  Object.keys(dbVoituresSales).forEach(function (m) { var v = voitures[m]; if (!v) return; sv.put({ mac: m, nom: v.nom, num: v.num, fw: v.fw, vuMs: v.vuMs, ordre: ordreVoitures.indexOf(m) }); });
+  Object.keys(dbSales).forEach(function (k) { var i = k.lastIndexOf('|'), m = k.slice(0, i), n = +k.slice(i + 1), v = voitures[m]; if (!v) return; if (!v.laps[n] && !v.traces[n]) { st.delete(k); return; } st.put({ cle: k, mac: m, num: n, lap: v.laps[n] || null, trace: v.traces[n] || null }); dbEcrits++; });
+  dbSales = {}; dbVoituresSales = {};
+  tx.onerror = function () { dbErreurs++; jrn('\u26a0 Ecriture en memoire refusee : ' + (tx.error && tx.error.name)); };
+}
+function dbEffacerVoiture(mac) {
+  if (!db) return; var tx = db.transaction('tours', 'readwrite'), st = tx.objectStore('tours');
+  st.delete(IDBKeyRange.bound(mac + '|', mac + '|\uffff'));
+}
+function dbLireTout() {
+  return new Promise(function (res) {
+    var tx = db.transaction(['voitures', 'tours'], 'readonly'), vs = [], ts = [];
+    tx.objectStore('voitures').getAll().onsuccess = function (e) { vs = e.target.result || []; };
+    tx.objectStore('tours').getAll().onsuccess = function (e) { ts = e.target.result || []; };
+    tx.oncomplete = function () { res({ voitures: vs, tours: ts }); };
+    tx.onerror = function () { res({ voitures: [], tours: [] }); };
+  });
+}
+function memoireEtat() {
+  var e = document.getElementById('memEtat'); if (!e) return;
+  var n = 0; Object.keys(voitures).forEach(function (m) { n += Object.keys(voitures[m].laps).length; });
+  var txt = (db ? 'IndexedDB' : 'localStorage (secours)') + ' · ' + n + ' tour' + (n > 1 ? 's' : '') + ' · ' + Object.keys(voitures).length + ' voiture' + (Object.keys(voitures).length > 1 ? 's' : '');
+  if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function (q) { var p2 = navigator.storage.persisted ? navigator.storage.persisted() : Promise.resolve(false); p2.then(function (ok) { e.textContent = txt + ' · ' + (q.usage / 1048576).toFixed(1) + ' Mo utilises sur ' + Math.round(q.quota / 1048576) + ' · ' + (ok ? 'persistante (le navigateur ne l\u2019efface pas)' : 'au mieux : installe la page sur l\u2019ecran d\u2019accueil pour la rendre persistante'); }); });
+  else e.textContent = txt;
+}
+function sauvegarder() {
+  var d = new Date(), h = d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '_' + ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2);
+  var blob = new Blob([JSON.stringify({ format: 'tracklogics-mt', version: PAGE_VER, date: d.toISOString(), ordre: ordreVoitures, voitures: voitures })], { type: 'application/json' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tracklogics_sauvegarde_' + h + '.json'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  jrn('Sauvegarde ecrite : ' + a.download + ' (' + Math.round(blob.size / 1024) + ' ko)');
+}
+function restaurer(fichier) {
+  if (!fichier) return; var lecteur = new FileReader();
+  lecteur.onload = function () {
+    try {
+      var s = JSON.parse(lecteur.result); if (!s || s.format !== 'tracklogics-mt' || !s.voitures) { alert('Ce fichier n\u2019est pas une sauvegarde TRACKLOGICS MT.'); return; }
+      var ajoutes = 0;
+      Object.keys(s.voitures).forEach(function (m) {
+        var src = s.voitures[m]; if (!voitures[m]) { voitures[m] = { mac: m, nom: src.nom, num: src.num, fw: src.fw, vuMs: 0, idx: null, laps: {}, traces: {} }; ordreVoitures.push(m); }
+        var v = voitures[m];
+        Object.keys(src.laps || {}).forEach(function (n) { if (!v.laps[n]) { v.laps[n] = src.laps[n]; ajoutes++; } if (!v.traces[n] && src.traces && src.traces[n]) v.traces[n] = src.traces[n]; marquer(m, +n); });
+        marquer(m, null);
+      });
+      if (!vueMac && ordreVoitures.length) vueMac = ordreVoitures[0];
+      sauver(); rendre(); jrn('Restauration : ' + ajoutes + ' tour(s) ajoute(s) depuis ' + fichier.name); alert(ajoutes + ' tour(s) restaure(s). Les tours deja presents sont gardes tels quels.');
+    } catch (e) { alert('Sauvegarde illisible : ' + e.message); }
+  };
+  lecteur.readAsText(fichier);
 }
 function charger() {
+  dbOuvrir().then(function () {
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().then(function (ok) { jrn('Memoire persistante : ' + (ok ? 'accordee' : 'refusee (installe la page sur l\u2019ecran d\u2019accueil)')); });
+    return dbLireTout();
+  }).then(function (r) {
+    if (!r.voitures.length && !r.tours.length) {   // premiere ouverture en v22 : on importe l'ancien localStorage
+      chargerLocal(); Object.keys(voitures).forEach(function (m) { marquer(m, null); Object.keys(voitures[m].laps).forEach(function (n) { marquer(m, +n); }); Object.keys(voitures[m].traces).forEach(function (n) { marquer(m, +n); }); });
+      if (Object.keys(voitures).length) { sauverMaintenant(); jrn('Memoire : ' + Object.keys(voitures).length + ' voiture(s) importee(s) de localStorage vers IndexedDB'); }
+      try { localStorage.removeItem('mt_voitures'); } catch (e) {}
+    } else {
+      r.voitures.sort(function (a, b) { return (a.ordre || 0) - (b.ordre || 0); }).forEach(function (x) { voitures[x.mac] = { mac: x.mac, nom: x.nom, num: x.num, fw: x.fw, vuMs: x.vuMs, idx: null, laps: {}, traces: {} }; ordreVoitures.push(x.mac); });
+      r.tours.forEach(function (t) { var v = voitures[t.mac]; if (!v) { v = voitures[t.mac] = { mac: t.mac, nom: '?', num: 0, fw: '', vuMs: 0, idx: null, laps: {}, traces: {} }; ordreVoitures.push(t.mac); } if (t.lap) v.laps[t.num] = t.lap; if (t.trace) v.traces[t.num] = t.trace; });
+      if (ordreVoitures.length) vueMac = ordreVoitures[0];
+    }
+    rendre(); memoireEtat();
+  }).catch(function (e) { jrn('\u26a0 IndexedDB indisponible (' + e.message + ') : memoire de secours localStorage'); chargerLocal(); rendre(); memoireEtat(); });
+}
+function chargerLocal() {
   try {
     var s = JSON.parse(localStorage.getItem('mt_voitures') || 'null');
     if (s && s.voitures) { voitures = s.voitures; ordreVoitures = s.ordre || Object.keys(voitures); Object.keys(voitures).forEach(function (m) { voitures[m].idx = null; }); vueMac = ordreVoitures[0] || null; }
@@ -981,7 +1071,7 @@ async function toursEffacer() {
   if (!vueMac) return;
   var v = voitures[vueMac];
   if (!confirm('Effacer les ' + Object.keys(v.laps).length + ' tour(s) de ' + v.nom + ' sur cette page, et remettre son compteur a zero ?')) return;
-  v.laps = {}; v.traces = {}; vueTour = null; sauver(); rendre();
+  v.laps = {}; v.traces = {}; vueTour = null; dbEffacerVoiture(vueMac); marquer(vueMac, null); sauver(); rendre(); memoireEtat();   // [v22]
   if (await envoyerCmd(vueMac, [0x05])) etat('Tours de ' + v.nom + ' remis a zero.');
 }
 
@@ -1007,7 +1097,7 @@ document.getElementById('btnDetails').textContent = details ? 'Masquer les déta
 try { secteursN = +(localStorage.getItem('mt_sectN') || 3) || 3; partiellesOn = localStorage.getItem('mt_part') !== '0'; valeursOn = localStorage.getItem('mt_val') !== '0'; compMode = localStorage.getItem('mt_comp') || 'meilleur'; } catch (e) {} document.getElementById('valOn').checked = valeursOn; document.getElementById('compSel').value = compMode; document.getElementById('circN').value = secteursN; document.getElementById('partOn').checked = partiellesOn;
 circuitsCharger();
 rendre();
-setInterval(rendre, 10000);   // « vu il y a … » et le point de portee
+setInterval(function () { rendre(); memoireEtat(); }, 10000);   // « vu il y a … », le point de portee, la memoire
 jrn('Page ' + PAGE_VER + ' prete.');
 </script>
 </body>

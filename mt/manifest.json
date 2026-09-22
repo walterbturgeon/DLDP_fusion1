@@ -1,6 +1,6 @@
 {
   "name": "TRACKLOGICS MT",
-  "short_name": "TRLG MT",
+  "short_name": "TRACKLOGICS",
   "description": "Tours de piste, plusieurs voitures, un collecteur.",
   "id": "/DLDP_fusion1/mt/",
   "start_url": "./index.html",
@@ -9,7 +9,23 @@
   "background_color": "#f7f7f7",
   "theme_color": "#111111",
   "icons": [
-    { "src": "../icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "../icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    {
+      "src": "icon-mt-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-mt-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-mt-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
