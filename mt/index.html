@@ -139,7 +139,7 @@
 // le numero de serie (MAC) en sous-texte. Tout est range par MAC.
 // Pas de live, pas de LoRa : le tour, ses 4 valeurs (avec les libelles que
 // le module envoie), sa trace, sa carte.
-var PAGE_VER = 'MT v18';
+var PAGE_VER = 'MT v19';
 // [v15] LA COMPARAISON. Le tour affiche est compare a un tour de REFERENCE de la
 // meme voiture : son meilleur tour, ou le tour precedent. Sur la carte, la couleur
 // n'est plus la vitesse mais le DELTA de vitesse au meme endroit du tour (vert :
@@ -398,7 +398,7 @@ function rendre0() {
       + (prec && prec.dureeMs != null && l.dureeMs != null ? ecartTexte(l.dureeMs - prec.dureeMs) : '—') + '</td><td>' + source(l.source) + '</td><td class="num small">'
       + (l.recuMs ? new Date(l.recuMs).toTimeString().slice(0, 8) : '') + '</td>';
     tr.onclick = function () { vueTour = l.num; rendre(); };
-    tb.appendChild(tr);
+    tb.insertBefore(tr, tb.firstChild);   // [v19] le plus recent en haut
   });
   var lap = vueTour != null ? v.laps[vueTour] : null;
   document.getElementById('tourCard').style.display = lap ? '' : 'none';

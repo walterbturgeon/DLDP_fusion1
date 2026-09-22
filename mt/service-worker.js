@@ -4,7 +4,7 @@
 // ⚠ CE NUMERO DOIT MONTER A CHAQUE PUBLICATION : c'est lui qui declenche le
 // rechargement automatique de la page (controllerchange).
 const PREFIX = 'draglog-mt-';
-const CACHE = PREFIX + 'v18';   // v18 : cadre de carte commun a tous les tours du site, nord jamais en bas
+const CACHE = PREFIX + 'v19';   // v19 : liste des tours du plus recent au plus vieux
 const ASSETS = ['./', './index.html', './manifest.json', '../icon-192.png', '../icon-512.png', './logo-traclogics.jpg', '../circuits_index.csv', '../circuits_offsets.csv'];
 
 self.addEventListener('install', (ev) => {
