@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tableau DRAGLOGICS</title>
+<!-- MAQUETTE v2 du 30 sept. 2026, pour les essais DRAGLOGICS du samedi 3 octobre.
+     Ce que la PWA affichera quand elle se connecte a la T-Beam E3B4 (TBS_dlap, DLAP sur carte SD).
+     Runs de DEMONSTRATION au format EXACT du texte que le DLPT2 envoie au DLAP
+     ([dump] RUN #.. / R,... / [dump] J60.. J1320). lireRun() est le lecteur de la vraie page.
+     v2 : barre fixe en bas (Tableau, Passages, Inscriptions, Exporter), classes de competition,
+     journal de diagnostic exportable. -->
+<style>
+  :root { --bg:#f3f4f6; --card:#fff; --ink:#111; --muted:#667; --line:#e2e4e8; --sel:#1e63d6; --selbg:#e8f0fd;
+          --ok:#1c8f4a; --lent:#c0392b; --att:#e8730c; --tab:#eef0f3; --gros:#0b0d10; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+          --bg:#0f1115; --card:#181b21; --ink:#e9ecf1; --muted:#9aa3ae; --line:#2a2f37; --sel:#5b9bff; --selbg:#1b2a44;
+          --ok:#3cc97a; --lent:#ff6b5e; --att:#ff9a3c; --tab:#20242c; --gros:#ffffff; } }
+  :root[data-theme="dark"] { --bg:#0f1115; --card:#181b21; --ink:#e9ecf1; --muted:#9aa3ae; --line:#2a2f37; --sel:#5b9bff; --selbg:#1b2a44;
+          --ok:#3cc97a; --lent:#ff6b5e; --att:#ff9a3c; --tab:#20242c; --gros:#ffffff; }
+  * { box-sizing:border-box; }
+  html, body { touch-action:pan-x pan-y; overscroll-behavior:none; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; font-size:15px; padding-bottom:76px; }
+  .num { font-variant-numeric:tabular-nums; }
+  header { position:sticky; top:0; z-index:10; background:var(--bg); padding:10px 16px 8px; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; border-bottom:1px solid var(--line); }
+  .logo { position:relative; width:174px; height:44px; overflow:hidden; background:#fff; border-radius:8px; flex:none; }
+  .logo img { position:absolute; left:0; top:-37px; width:174px; height:116px; }
+  header .evt { border:0; background:transparent; font:inherit; font-weight:600; color:var(--ink); min-width:10ch; padding:2px 4px; border-radius:6px; }
+  header .evt:focus { outline:2px solid var(--sel); }
+  .horloge { font-size:20px; font-weight:700; margin-left:auto; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:var(--card); border:1px solid var(--line); font-size:13px; }
+  .point { width:9px; height:9px; border-radius:50%; background:var(--ok); }
+  .demo { background:var(--att); color:#fff; border:0; font-weight:700; }
+  .outils { display:flex; gap:8px; padding:8px 16px; flex-wrap:wrap; align-items:center; }
+  .seg { display:inline-flex; margin-left:auto; }
+  .seg button { border:1px solid var(--line); background:var(--card); color:var(--ink); padding:8px 14px; font:inherit; cursor:pointer; border-radius:0; }
+  .seg button:first-child { border-radius:10px 0 0 10px; } .seg button:last-child { border-radius:0 10px 10px 0; }
+  .seg button.on { background:var(--sel); border-color:var(--sel); color:#fff; }
+  main { padding:4px 16px 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .card h2 { margin:0 0 10px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .grille { display:grid; gap:14px; grid-template-columns:1fr; }
+  @media (min-width:1000px) { .grille.tableau { grid-template-columns:1.35fr 1fr; } .grille.passages { grid-template-columns:1.1fr 1fr; } .grille.deux { grid-template-columns:1.4fr 1fr; } }
+  .dernier .qui { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .dernier .pilote { font-size:34px; font-weight:800; line-height:1.1; }
+  .dernier .voiture { color:var(--muted); font-size:15px; }
+  .dernier .et { font-size:64px; font-weight:800; color:var(--gros); line-height:1; margin:10px 0 2px; }
+  .dernier .et small { font-size:20px; font-weight:600; color:var(--muted); margin-left:10px; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+  .badge.pb { background:var(--ok); color:#fff; }
+  .badge.att { background:var(--att); color:#fff; }
+  .badge.cl { background:var(--tab); color:var(--ink); border:1px solid var(--line); }
+  /* le numero de course, comme une plaque : fond noir, chiffre blanc (bordure claire en mode sombre) */
+  .plaque { display:inline-block; min-width:2.2em; padding:1px 6px; margin-right:6px; border-radius:5px; background:#111; color:#fff;
+            border:1px solid #111; font-weight:800; text-align:center; font-variant-numeric:tabular-nums; }
+  :root[data-theme="dark"] .plaque { border-color:#555; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .plaque { border-color:#555; } }
+  .dernier .pilote .plaque { font-size:26px; padding:2px 10px; vertical-align:4px; }
+  input.num-course { width:5.5em; min-width:0; text-align:center; font-weight:700; }
+  .partiels { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:12px; }
+  .tuile { background:var(--tab); border-radius:10px; padding:8px 10px; }
+  .tuile .lab { font-size:11px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+  .tuile .val { font-size:22px; font-weight:700; }
+  .tuile .vit { font-size:12px; color:var(--muted); }
+  .tuile .ecart { font-size:12px; font-weight:700; }
+  .plus { color:var(--lent); } .moins { color:var(--ok); }
+  @keyframes arrivee { 0% { box-shadow:0 0 0 0 var(--sel); } 60% { box-shadow:0 0 0 10px transparent; } 100% { box-shadow:0 0 0 0 transparent; } }
+  .arrive { animation:arrivee 1.2s ease-out 2; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:7px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { font-size:11px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; font-weight:600; }
+  td.n, th.n { text-align:right; }
+  tr.clic { cursor:pointer; } tr.clic:hover td { background:var(--tab); } tr.choisi td { background:var(--selbg); }
+  .rang { font-weight:800; width:2.2em; }
+  .tableau-classement td { font-size:16px; }
+  .recents .ligne { display:flex; gap:10px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--line); cursor:pointer; }
+  .recents .ligne:last-child { border-bottom:0; }
+  .recents .h { color:var(--muted); width:4.5em; } .recents .p { font-weight:700; flex:1; } .recents .t { font-weight:700; }
+  .defile { overflow-x:auto; }
+  .filtres { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  select, input[type=text] { font:inherit; padding:7px 9px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--ink); }
+  input[type=text] { width:100%; min-width:9ch; }
+  .nav-run { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+  .nav-run .pos { color:var(--muted); margin:0 auto; }
+  .bouton { font:inherit; padding:8px 14px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; }
+  .bouton:disabled { opacity:.45; cursor:default; }
+  .bouton.plein { background:var(--sel); border-color:var(--sel); color:#fff; font-weight:600; }
+  svg.courbe { width:100%; height:190px; display:block; }
+  svg.courbe text { fill:var(--muted); font-size:10px; }
+  details { margin-top:10px; } summary { cursor:pointer; color:var(--muted); }
+  pre { font-size:11px; background:var(--tab); padding:8px; border-radius:8px; max-height:220px; overflow:auto; }
+  .aide { color:var(--muted); font-size:13px; }
+  .vide { color:var(--muted); padding:20px 0; text-align:center; }
+  .export .ligne { display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
+  .export .ligne:last-child { border-bottom:0; }
+  .export .quoi { flex:1; } .export .quoi b { display:block; }
+  .journal { font-family:ui-monospace,Consolas,monospace; font-size:12px; max-height:360px; overflow:auto; background:var(--tab); border-radius:8px; padding:8px; }
+  .journal div { padding:2px 0; } .journal .j-att { color:var(--att); font-weight:700; }
+  .classes .ligne { display:flex; gap:8px; align-items:center; padding:6px 0; }
+  /* LA BARRE DU BAS, fixe -- comme la page TRACLOGICS */
+  #barbas { position:fixed; left:0; right:0; bottom:0; z-index:20; display:flex; background:var(--card); border-top:1px solid var(--line);
+            padding:0 2px calc(4px + env(safe-area-inset-bottom)); }
+  #barbas button { flex:1; background:none; border:0; color:var(--muted); font:inherit; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+                   padding:10px 1px 6px; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer; position:relative; }
+  #barbas button svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+  #barbas button.actif { color:var(--sel); }
+  /* le bouton de connexion : orange quand il faut agir (deconnecte), vert quand le lien tient */
+  #barbas button.cx-off { color:var(--att); }
+  #barbas button.cx-on { color:var(--ok); }
+  #barbas button.cx-cx { color:var(--muted); }
+  #bandeau { position:sticky; top:0; z-index:15; display:none; background:var(--att); color:#fff; font-weight:700; padding:10px 16px; cursor:pointer; }
+  #bandeau.vu { display:block; }
+  .point.off { background:var(--att); }
+  #barbas button.actif::before { content:''; position:absolute; top:0; left:26%; right:26%; height:3px; border-radius:0 0 3px 3px; background:var(--sel); }
+  @media (max-width:640px) { .dernier .et { font-size:48px; } .partiels { grid-template-columns:repeat(2, 1fr); } .dernier .pilote { font-size:26px; } }
+</style>
+</head>
+<body>
+<header>
+  <!-- le VRAI logo (logo.svg de la PWA, « DRAGLOGICS by BPS »). Le fichier fait 1536 x 1024 avec une
+       grande marge blanche : on ne montre que la bande du logo (32 % a 70 % de la hauteur), sur une
+       plaque blanche, pour que son fond blanc reste propre en mode sombre. -->
+  <div class="logo"><img src="../logo.svg" alt="DRAGLOGICS by BPS"></div>
+  <input class="evt" id="evt" aria-label="Nom de l'événement">
+  <span class="chip"><span class="point off" id="pointE3B4"></span><span id="etatE3B4">E3B4 · non connectée</span></span>
+  <span class="chip demo">DÉMO</span>
+  <span class="horloge num" id="horloge"></span>
+</header>
+<div id="bandeau" role="button">E3B4 déconnectée — les runs ne rentrent pas. Toucher pour connecter.</div>
+<div class="outils" id="outils">
+  <select id="fClasse" aria-label="Classe"><option value="">Toutes les classes</option></select>
+  <div class="seg" id="segDist" role="group" aria-label="Distance du classement">
+    <button data-d="660">1/8 mi</button><button data-d="1320" class="on">1/4 mi</button>
+  </div>
+</div>
+<main>
+  <!-- ============ TABLEAU ============ -->
+  <section id="v-tableau">
+    <div class="grille tableau">
+      <div class="card dernier" id="carteDernier"></div>
+      <div class="card"><h2 id="titreClassement">Classement</h2><div class="defile"><table class="tableau-classement"><thead><tr><th>#</th><th>Pilote</th><th class="n">Meilleur</th><th class="n">Vitesse</th><th class="n">60 pi</th><th class="n">Écart</th><th class="n">Runs</th></tr></thead><tbody id="classement"></tbody></table></div></div>
+      <div class="card recents"><h2>Passages récents</h2><div id="recents"></div></div>
+      <div class="card"><h2>Démo</h2>
+        <p class="aide">La maquette ajoute un passage de démonstration toutes les 20 s, comme si la E3B4 en recevait un.</p>
+        <button class="bouton" id="btnAjout">+ un passage maintenant</button>
+        <label style="margin-left:10px"><input type="checkbox" id="auto" checked> automatique</label>
+      </div>
+    </div>
+  </section>
+  <!-- ============ PASSAGES (la base) ============ -->
+  <section id="v-passages" hidden>
+    <div class="grille passages">
+      <div class="card">
+        <h2>Tous les passages</h2>
+        <div class="filtres">
+          <select id="fPilote"><option value="">Tous les pilotes</option></select>
+          <select id="fStatut"><option value="">Tous</option><option value="TERMINE">Terminés</option><option value="ABANDON">Abandons</option></select>
+        </div>
+        <div class="defile"><table><thead><tr><th>Heure</th><th>Pilote</th><th class="n">60 pi</th><th class="n">330 pi</th><th class="n">1/8</th><th class="n">1/4</th><th class="n">Vitesse</th></tr></thead><tbody id="liste"></tbody></table></div>
+      </div>
+      <div class="card" id="detail"></div>
+    </div>
+  </section>
+  <!-- ============ INSCRIPTIONS : pilotes et classes ============ -->
+  <section id="v-inscriptions" hidden>
+    <div class="grille deux">
+      <div class="card">
+        <h2>Inscriptions</h2>
+        <p class="aide">Chaque voiture reçoit son numéro de course, un pilote et une classe. Ils s'appliquent à tous ses runs. Pour un run conduit par quelqu'un d'autre, change le pilote dans Passages : ce choix ne touche que ce run.</p>
+        <div class="defile"><table><thead><tr><th>Voiture (module)</th><th>N°</th><th>Pilote</th><th>Classe</th><th class="n">Runs</th></tr></thead><tbody id="tInscr"></tbody></table></div>
+      </div>
+      <div class="card classes">
+        <h2>Classes de compétition</h2>
+        <div id="listeClasses"></div>
+        <div class="ligne"><input type="text" id="nouvelleClasse" placeholder="Nouvelle classe (ex. Street, Modifiée)"><button class="bouton plein" id="ajoutClasse">Ajouter</button></div>
+        <p class="aide">Une classe vidée de son nom est retirée ; ses voitures passent en « Sans classe ».</p>
+      </div>
+    </div>
+  </section>
+  <!-- ============ EXPORTER ============ -->
+  <section id="v-exporter" hidden>
+    <div class="grille deux">
+      <div class="card export">
+        <h2>Exporter</h2>
+        <div class="ligne"><div class="quoi"><b>Tout exporter</b><span class="aide">Les fichiers ci-dessous, un par un. La sauvegarde part en premier.</span></div><button class="bouton plein" id="xTout">Tout</button></div>
+        <div class="ligne"><div class="quoi"><b>Sauvegarde complète (JSON)</b><span class="aide">Runs bruts, inscriptions, classes, journal : tout pour reconstruire la page.</span></div><button class="bouton" id="xJson">JSON</button></div>
+        <div class="ligne"><div class="quoi"><b>Journal de diagnostic (CSV)</b><span class="aide">Ce que la page a vu : connexions, runs reçus, changements, exports, erreurs.</span></div><button class="bouton" id="xJournal">CSV</button></div>
+        <div class="ligne"><div class="quoi"><b>Résultats (CSV)</b><span class="aide">Un run par ligne : heure, pilote, classe, partiels, vitesses, statut.</span></div><button class="bouton" id="xResultats">CSV</button></div>
+        <div class="ligne"><div class="quoi"><b>Runs bruts (TXT)</b><span class="aide">Le texte de chaque run, tel qu'il est sur la carte SD.</span></div><button class="bouton" id="xBruts">TXT</button></div>
+        <div class="ligne"><div class="quoi"><b>Journal de la E3B4 (carte SD)</b><span class="aide">Chaque trame radio reçue et émise. Arrive avec le firmware TDL.0.02.</span></div><button class="bouton" disabled>SD</button></div>
+        <p class="aide" id="bilanExport"></p>
+      </div>
+      <div class="card">
+        <h2>Journal de diagnostic</h2>
+        <div class="journal" id="journal"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="barbas">
+  <button id="btnCx" class="cx-off"><svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg><span id="btnCxTxt">Connecter</span></button>
+  <button data-vue="tableau" class="actif"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>Tableau</button>
+  <button data-vue="passages"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Passages</button>
+  <button data-vue="inscriptions"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6"/><path d="M16 7h5M16 11h5M18.5 4.5v9"/></svg>Inscriptions</button>
+  <button data-vue="exporter"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 17v2.5h16V17"/></svg>Exporter</button>
+</div>
+
+<script>
+// ===================================================================
+// LE LECTEUR DE RUN -- celui de la vraie page. Entree : le texte BRUT
+// que le DLPT2 envoie au DLAP (et que la E3B4 ecrit sur la SD).
+// ===================================================================
+// ⚠⚠ LES DEUX HORLOGES D'UN RUN (modele « zero offset » du 20 juillet 2026, valide en piste) :
+//   - les temps des jalons (J60..J1320) comptent depuis T0 = le passage du 1er PIED, comme le
+//     faisceau de depart d'une piste. C'est ce que le kit met sur le bus CAN ;
+//   - les lignes R, comptent depuis le DECLENCHEMENT (1,1 km/h), negatives avant.
+// T0 n'est PAS dans le texte du run. L'en-tete « rollout_ms=0 » est l'ANCIEN decalage en temps
+// (perfRolloutMs, avant la v6.5), pas ce T0. On le retrouve comme le kit : l'instant ou dist_ft
+// franchit 1,0 pied, interpole entre deux lignes R.
+function passage(ech, pieds) {
+  for (var i = 1; i < ech.length; i++) {
+    var a = ech[i - 1], b = ech[i];
+    if (a.d < pieds && b.d >= pieds) { var f = (b.d > a.d) ? (pieds - a.d) / (b.d - a.d) : 1; return a.t + f * (b.t - a.t); }
+  }
+  return null;
+}
+function lireRun(txt) {
+  var r = lireRunBrut(txt); r.t0 = passage(r.ech, 1.0); return r;
+}
+function lireRunBrut(txt) {
+  var r = { seq: 0, heure: '', unit: '', statut: '', t60: 0, t330: 0, t660: 0, t1320: 0, v330: 0, v660: 0, v1320: 0, ech: [] };
+  txt.split('\n').forEach(function (l) {
+    l = l.trim(); var m;
+    if ((m = l.match(/^\[dump\] RUN #(\d+)(.*)$/))) {
+      r.seq = +m[1];
+      var h = m[2].match(/heure=(\S+)/); if (h) r.heure = h[1];
+      var u = m[2].match(/unit=(\S+)/); if (u) r.unit = u[1];
+      var s = m[2].match(/statut=(\S+)/); if (s) r.statut = s[1];
+    } else if ((m = l.match(/^\[dump\] J(60|330|660|1320) t_ms=(\d+)(.*)$/))) {
+      r['t' + m[1]] = +m[2];
+      var vt = m[3].match(/vtrap_x100=(\d+)/); if (vt) r['v' + m[1]] = +vt[1] / 100;
+    } else if (l.indexOf('R,') === 0) {
+      var c = l.split(','); r.ech.push({ t: +c[1], v: +c[2] / 100, d: +c[3] });
+    }
+  });
+  return r;
+}
+
+// ===================================================================
+// DONNEES DE DEMONSTRATION (seront remplacees par la E3B4)
+// ===================================================================
+// LE CALCUL DU KIT, copie EXACTE de DRAGLOG_PT2.ino : perfTick (lignes 7634-7812),
+// perfCross (6588), trapSpeedX100 (6609). Les runs de demonstration passent par lui : ils
+// portent donc les MEMES temps que ceux que le kit met sur le bus CAN.
+//   depart   : premier echantillon au-dessus de 1,1 km/h (PERF_TRIGGER_KMH)
+//   distance : integration trapezoidale de la vitesse, echantillon par echantillon
+//   T0       : passage interpole du 1er pied ; jalon D = passage de D+1 pied ; temps = t(D+1) - T0
+//   trap     : 66 pi / (t(D+1) - t(D-65)) ; au 60 pi, pas de trap (la fenetre sortirait de la piste)
+var PERF_TRIGGER_KMH = 1.1, PERF_FT_PER_M = 3.28084, PERF_TIMEOUT_MS = 20000;
+function calculKit(ech) {                 // ech : [{ ms, x100 }] a la cadence du GPS
+  var p = null, R = [], pre = [], tRoll = null, trap = {}, j = {}, fini = false;
+  function croise(cible, prevD, prevEl, prevKmh, kmh, el, d) {
+    var span = d - prevD, f = span > 0 ? (cible - prevD) / span : 1; f = Math.min(1, Math.max(0, f));
+    return { t: prevEl + Math.floor(f * (el - prevEl) + 0.5), v: Math.floor((prevKmh + f * (kmh - prevKmh)) * 100 + 0.5) };
+  }
+  function vTrap(tc, tDebut, inst) {
+    if (tDebut == null || tc <= tDebut) return inst;
+    var kmh = (66 / ((tc - tDebut) / 1000)) * 1.09728; if (kmh > 500) return inst;
+    return Math.floor(kmh * 100 + 0.5);
+  }
+  for (var i = 0; i < ech.length && !fini; i++) {
+    var s = ech[i], kmh = s.x100 / 100;
+    if (!p) {
+      if (kmh > PERF_TRIGGER_KMH) {
+        p = { trig: s.ms, d: 0, last: kmh, lastMs: s.ms };
+        pre = ech.slice(Math.max(0, i - 7), i).map(function (x) { return [x.ms - s.ms, x.x100, 0]; });   // le tampon avant le depart (pre=7)
+      }
+      continue;
+    }
+    if (s.ms - p.trig > PERF_TIMEOUT_MS) break;                           // TIMEOUT : 1320 pi pas atteints
+    var dt = s.ms - p.lastMs, prevKmh = p.last, prevD = p.d, prevEl = p.lastMs - p.trig;
+    if (dt > 0 && dt < 500) p.d += (kmh + p.last) * 0.5 * (1000 / 3600) * (dt / 1000) * PERF_FT_PER_M;
+    p.last = kmh; p.lastMs = s.ms;
+    var el = s.ms - p.trig;
+    R.push([el, s.x100, p.d]);
+    if (tRoll == null && p.d >= 1) tRoll = croise(1, prevD, prevEl, prevKmh, kmh, el, p.d).t;
+    [330, 660, 1320].forEach(function (D) { if (trap[D] == null && p.d >= D - 65) trap[D] = croise(D - 65, prevD, prevEl, prevKmh, kmh, el, p.d).t; });
+    [60, 330, 660, 1320].forEach(function (D) {
+      if (j[D] || p.d < D + 1) return;
+      var c = croise(D + 1, prevD, prevEl, prevKmh, kmh, el, p.d);
+      j[D] = { t: c.t > tRoll ? c.t - tRoll : 0, vc: c.v, vt: D === 60 ? 0 : vTrap(c.t, trap[D], c.v) };
+      if (D === 1320) fini = true;
+    });
+  }
+  return { R: R, pre: pre, tRoll: tRoll, j: j, statut: j[1320] ? 'TERMINE' : 'ABANDON' };
+}
+// le texte du run, au caractere pres comme runToText() du kit (lignes 1574-1628)
+function texteRun(unit, seq, heure, c) {
+  var L = ['[dump] RUN #' + seq + ' heure=' + heure + ' src=SEUIL_GPS rollout_ms=0 unit=' + unit + ' dyn=7 rate_ms=40 gps=1 pre=' + c.pre.length + ' imuf=2/7 ecu=HP statut=' + c.statut,
+           '[dump] colonnes: R,elapsed_ms,kmh_x100,dist_ft,ax_mg,ay_mg,az_mg,gx_ds10,gy_ds10,gz_ds10'];
+  c.pre.concat(c.R).forEach(function (x) { L.push('R,' + x[0] + ',' + x[1] + ',' + x[2].toFixed(1) + ',0,0,1000,0,0,0'); });
+  [60, 330, 660, 1320].forEach(function (D) {
+    var x = c.j[D]; if (!x || !x.t) return;
+    L.push('[dump] J' + D + ' t_ms=' + x.t + (D === 60 ? '' : ' vcross_x100=' + x.vc + ' vtrap_x100=' + x.vt));
+  });
+  L.push('[dump] FIN RUN #' + seq + ' t60=' + (c.j[60] ? c.j[60].t : 0) + ' t330=' + (c.j[330] ? c.j[330].t : 0) + ' t660=' + (c.j[660] ? c.j[660].t : 0) + ' t1320=' + (c.j[1320] ? c.j[1320].t : 0));
+  return L.join('\n');
+}
+// LA COURSE SIMULEE DU KIT : simProfileKmh() et serviceSimRun() (lignes 6317-6376), 25 Hz,
+// 1,5 s a l'arret (0,40 km/h, sous le seuil), puis le profil. Le mot `sim` du kit produit la meme.
+function simProfileKmh(tMs) {
+  var P = [[0, 1.2], [774, 50.9], [1547, 70.0], [3056, 91.3], [4565, 140.0], [5526, 200.1], [6486, 213.8], [7926, 257.3], [9366, 277.4],
+           [11000, 240.0], [13500, 150.0], [16000, 70.0], [18000, 20.0], [20000, 0.0]];
+  if (tMs >= P[P.length - 1][0]) return P[P.length - 1][1];
+  for (var i = 1; i < P.length; i++) if (tMs <= P[i][0]) { var f = (tMs - P[i - 1][0]) / (P[i][0] - P[i - 1][0]); return P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f; }
+  return 0;
+}
+function echantillonsSimKit() {
+  var e = [];
+  for (var t = 0; t < 1500; t += 40) e.push({ ms: t, x100: 40 });
+  for (var tr = 0; tr <= 21000; tr += 40) e.push({ ms: 1500 + tr, x100: Math.floor(simProfileKmh(tr) * 100 + 0.5) });
+  return e;
+}
+
+// ===================================================================
+// DONNEES DE DEMONSTRATION (seront remplacees par la E3B4)
+// ===================================================================
+var VOITURES = [
+  { unit: 'SIMUL', nom: 'Course simulée du kit', sim: true },
+  { unit: 'RIVET', nom: '944 turbo', vmax: 212, tau: 6.9 },
+  { unit: 'RAOUL', nom: 'Voiture 120', vmax: 205, tau: 7.4 },
+  { unit: 'SH_56', nom: 'Voiture 164', vmax: 196, tau: 7.9 }
+];
+var graine = 20261003;
+function alea() { graine = (graine * 1103515245 + 12345) % 2147483648; return graine / 2147483648; }
+var compteur = { SIMUL: 0, RIVET: 0, RAOUL: 0, SH_56: 0 };
+var heureDemo = 10 * 3600 + 5 * 60;
+// une voiture de demonstration : une vitesse physique a 25 Hz, passee par le calcul du kit
+function echantillonsVoiture(v, abandon) {
+  var e = [], vmax = v.vmax * (0.97 + alea() * 0.05), tau = v.tau * (0.97 + alea() * 0.06), leve = 3 + alea() * 3, kmh = 0;
+  for (var t = 0; t < 1000; t += 40) e.push({ ms: t, x100: 30 + Math.floor(alea() * 20) });   // a l'arret : bruit GPS sous 1,1 km/h
+  for (var tr = 0; tr <= 21000; tr += 40) {
+    var s = tr / 1000; kmh = vmax * (1 - Math.exp(-s / tau));
+    if (abandon && s > leve) kmh = Math.max(0, vmax * (1 - Math.exp(-leve / tau)) * (1 - (s - leve) / 5));   // leve le pied et freine : pas de 1320
+    e.push({ ms: 1000 + tr, x100: Math.max(0, Math.floor(kmh * 100 + (alea() - 0.5) * 30 + 0.5)) });
+  }
+  return e;
+}
+function fabriquerRun(v) {
+  compteur[v.unit]++; heureDemo += 240 + Math.floor(alea() * 420);
+  var c = calculKit(v.sim ? echantillonsSimKit() : echantillonsVoiture(v, alea() < 0.12));
+  return texteRun(v.unit, compteur[v.unit], hms(heureDemo), c);
+}
+function hms(s) { s = Math.floor(s) % 86400; var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x; }
+
+// ===================================================================
+// ETAT DE LA PAGE
+// ===================================================================
+var runs = [], dist = 1320, choisi = null, vue = 'tableau';
+function lsLire(k, def) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
+function lsEcrire(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+var inscr = lsLire('tdl_inscr', { SIMUL: { num: '', pilote: 'Course simulée (kit)', classe: 'Ouverte' }, RIVET: { num: '77', pilote: 'Rivet', classe: 'Ouverte' }, RAOUL: { num: '', pilote: 'Raoul', classe: 'Ouverte' }, SH_56: { num: '', pilote: 'SH 56', classe: 'Ouverte' } });
+var classes = lsLire('tdl_classes', ['Ouverte']);
+var parRun = lsLire('tdl_parRun', {});
+var journal = [];
+function jrn(type, msg) {
+  journal.push({ t: new Date().toISOString(), type: type, msg: msg });
+  if (vue === 'exporter') rendreJournal();
+}
+function piloteDe(r) { return parRun[r.id] || (inscr[r.unit] && inscr[r.unit].pilote) || r.unit; }
+function classeDe(r) { return (inscr[r.unit] && inscr[r.unit].classe) || 'Sans classe'; }
+function numDe(u) { return (inscr[u] && inscr[u].num) || ''; }
+// la plaque : rien si la voiture n'a pas encore de numero (on n'invente pas de numero)
+function plaque(u) { var n = numDe(u); return n ? '<span class="plaque">' + esc(n) + '</span>' : ''; }
+function voitureDe(u) { var v = VOITURES.filter(function (x) { return x.unit === u; })[0]; return v ? v.nom : u; }
+function ajouterTexte(txt, board) {
+  var r = lireRun(txt);
+  r.board = board || r.unit; r.id = r.board + '_' + r.seq; r.texte = txt; r.recuMs = Date.now();
+  if (runs.some(function (x) { return x.id === r.id; })) { jrn('run', 'run ' + r.id + ' déjà dans la base : ignoré'); return null; }
+  runs.push(r);
+  jrn('run', 'run ' + r.id + ' reçu : ' + piloteDe(r) + ', ' + r.statut + ', 1/4 ' + s3(r.t1320) + ' s, ' + r.ech.length + ' échantillons');
+  if (!r.unit || !r.seq) jrn('erreur', 'run ' + r.id + ' : en-tête incomplet (unit ou numéro manquant)');
+  return r;
+}
+function vD(r, d) { return d === 660 ? r.v660 : r.v1320; }
+function s3(ms) { return ms ? (ms / 1000).toFixed(3) : '—'; }
+function k1(v) { return v ? v.toFixed(1) : '—'; }
+function ecartTxt(ms) { return (ms > 0 ? '+' : '') + (ms / 1000).toFixed(3); }
+function meilleurDe(pil, cle, sauf) {
+  var b = null;
+  runs.forEach(function (r) { if (r === sauf || piloteDe(r) !== pil || !r[cle]) return; if (b == null || r[cle] < b) b = r[cle]; });
+  return b;
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+// ===================================================================
+// RENDU
+// ===================================================================
+function rendreDernier(anim) {
+  var el = document.getElementById('carteDernier');
+  if (!runs.length) { el.innerHTML = '<h2>Dernier passage</h2><div class="vide">En attente du premier run…</div>'; return; }
+  var r = runs[runs.length - 1], pil = piloteDe(r), cle = 't' + dist;
+  var avant = meilleurDe(pil, cle, r), pb = r[cle] && (avant == null || r[cle] < avant);
+  var tuiles = [['60 pi', 't60', null], ['330 pi', 't330', 'v330'], ['1/8 mi', 't660', 'v660'], ['1/4 mi', 't1320', 'v1320']].map(function (x) {
+    var b = meilleurDe(pil, x[1], r), e = (r[x[1]] && b != null) ? r[x[1]] - b : null;
+    return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(r[x[1]]) + '</div>'
+      + (x[2] ? '<div class="vit num">' + k1(r[x[2]]) + ' km/h</div>' : '<div class="vit">&nbsp;</div>')
+      + '<div class="ecart num ' + (e == null ? '' : e > 0 ? 'plus' : 'moins') + '">' + (e == null ? '&nbsp;' : ecartTxt(e) + ' vs meilleur') + '</div></div>';
+  }).join('');
+  el.innerHTML = '<h2>Dernier passage · ' + r.heure + '</h2>'
+    + '<div class="qui"><span class="pilote">' + plaque(r.unit) + esc(pil) + '</span><span class="voiture">' + esc(voitureDe(r.unit)) + ' · run #' + r.seq + '</span>'
+    + '<span class="badge cl">' + esc(classeDe(r)) + '</span>'
+    + (pb ? '<span class="badge pb">Meilleur perso</span>' : '') + (r.statut !== 'TERMINE' ? '<span class="badge att">' + esc(r.statut) + '</span>' : '') + '</div>'
+    + '<div class="et num">' + s3(r[cle]) + '<small>' + (dist === 660 ? '1/8 mi' : '1/4 mi') + ' · ' + k1(vD(r, dist)) + ' km/h</small></div>'
+    + '<div class="partiels">' + tuiles + '</div>';
+  if (anim) { el.classList.remove('arrive'); void el.offsetWidth; el.classList.add('arrive'); }
+}
+function rendreClassement() {
+  var cle = 't' + dist, fc = document.getElementById('fClasse').value, par = {};
+  runs.forEach(function (r) {
+    if (fc && classeDe(r) !== fc) return;
+    var p = piloteDe(r); par[p] = par[p] || { pil: p, unit: r.unit, cl: classeDe(r), n: 0, best: null, run: null, b60: null };
+    var e = par[p]; e.n++;
+    if (r[cle] && (e.best == null || r[cle] < e.best)) { e.best = r[cle]; e.run = r; }
+    if (r.t60 && (e.b60 == null || r.t60 < e.b60)) e.b60 = r.t60;
+  });
+  var L = Object.keys(par).map(function (k) { return par[k]; }).sort(function (a, b) { return (a.best || 1e9) - (b.best || 1e9); });
+  var tete = L.length && L[0].best;
+  document.getElementById('titreClassement').textContent = 'Classement · ' + (fc || 'toutes les classes') + ' · ' + (dist === 660 ? '1/8 mi' : '1/4 mi');
+  document.getElementById('classement').innerHTML = L.length ? L.map(function (e, i) {
+    return '<tr class="clic" data-id="' + (e.run ? e.run.id : '') + '"><td class="rang">' + (e.best ? i + 1 : '—') + '</td><td>' + plaque(e.unit) + '<b>' + esc(e.pil) + '</b><br><span class="aide">' + esc(voitureDe(e.unit)) + (fc ? '' : ' · ' + esc(e.cl)) + '</span></td>'
+      + '<td class="n num"><b>' + s3(e.best) + '</b></td><td class="n num">' + k1(e.run ? vD(e.run, dist) : 0) + '</td><td class="n num">' + s3(e.b60) + '</td>'
+      + '<td class="n num">' + (e.best && tete && e.best !== tete ? '+' + ((e.best - tete) / 1000).toFixed(3) : '') + '</td><td class="n num">' + e.n + '</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="vide">Aucun run dans cette classe</td></tr>';
+}
+function rendreRecents() {
+  var L = runs.slice(-6).reverse();
+  document.getElementById('recents').innerHTML = L.length ? L.map(function (r) {
+    return '<div class="ligne" data-id="' + r.id + '"><span class="h num">' + r.heure.slice(0, 5) + '</span><span class="p">' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</span><span class="t num">' + s3(r['t' + dist]) + '</span><span class="aide num">' + k1(vD(r, dist)) + ' km/h</span></div>';
+  }).join('') : '<div class="vide">—</div>';
+}
+function listeFiltree() {
+  var fp = document.getElementById('fPilote').value, fs = document.getElementById('fStatut').value, fc = document.getElementById('fClasse').value;
+  return runs.filter(function (r) { return (!fp || piloteDe(r) === fp) && (!fs || r.statut === fs) && (!fc || classeDe(r) === fc); }).slice().reverse();
+}
+function rendreListe() {
+  var sel = document.getElementById('fPilote'), garde = sel.value, noms = {};
+  runs.forEach(function (r) { noms[piloteDe(r)] = 1; });
+  sel.innerHTML = '<option value="">Tous les pilotes</option>' + Object.keys(noms).sort().map(function (n) { return '<option' + (n === garde ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+  var L = listeFiltree();
+  document.getElementById('liste').innerHTML = L.length ? L.map(function (r) {
+    return '<tr class="clic' + (r.id === choisi ? ' choisi' : '') + '" data-id="' + r.id + '"><td class="num">' + r.heure + '</td><td>' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</td>'
+      + '<td class="n num">' + s3(r.t60) + '</td><td class="n num">' + s3(r.t330) + '</td><td class="n num">' + s3(r.t660) + '</td><td class="n num"><b>' + s3(r.t1320) + '</b></td><td class="n num">' + k1(vD(r, dist)) + '</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="vide">Aucun run</td></tr>';
+}
+function courbe(r) {
+  // l'axe du temps est celui des lignes R (depuis le declenchement) ; un jalon s'y place a T0 + t
+  var t0 = r.t0 || 0, fin = r.t1320 ? t0 + r.t1320 + 1500 : Infinity;
+  var e = r.ech.filter(function (x) { return x.t >= 0 && x.t <= fin; }); if (e.length < 2) return '<p class="aide">Pas d\'échantillons dans ce run.</p>';
+  var W = 600, H = 190, g = 34, tmax = e[e.length - 1].t, vmax = 0; e.forEach(function (x) { if (x.v > vmax) vmax = x.v; });
+  vmax = Math.ceil(vmax / 20) * 20 || 20;
+  var X = function (t) { return g + (W - g - 8) * t / tmax; }, Y = function (v) { return H - 18 - (H - 28) * v / vmax; };
+  var p = e.map(function (x, i) { return (i ? 'L' : 'M') + X(x.t).toFixed(1) + ' ' + Y(x.v).toFixed(1); }).join(' '), grille = '';
+  for (var v = 0; v <= vmax; v += 40) grille += '<line x1="' + g + '" x2="' + (W - 8) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--line)"/><text x="2" y="' + (Y(v) + 3) + '">' + v + '</text>';
+  var jal = [[60, r.t60], [330, r.t330], [660, r.t660], [1320, r.t1320]].filter(function (x) { return x[1]; }).map(function (x) {
+    var xp = X(t0 + x[1]);
+    return '<line x1="' + xp + '" x2="' + xp + '" y1="8" y2="' + (H - 18) + '" stroke="var(--sel)" stroke-dasharray="3 3"/><text x="' + (xp + 3) + '" y="16">' + (x[0] === 660 ? '1/8' : x[0] === 1320 ? '1/4' : x[0]) + '</text>';
+  }).join('');
+  return '<svg class="courbe" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + grille + jal + '<path d="' + p + '" fill="none" stroke="var(--ink)" stroke-width="2"/>'
+    + '<text x="' + (W - 60) + '" y="' + (H - 4) + '">temps (s) →</text><text x="' + g + '" y="' + (H - 4) + '">km/h</text></svg>';
+}
+function rendreDetail() {
+  var el = document.getElementById('detail'), L = listeFiltree();
+  var i = L.findIndex(function (r) { return r.id === choisi; });
+  if (i < 0) { if (!L.length) { el.innerHTML = '<h2>Run</h2><div class="vide">Aucun run</div>'; return; } choisi = L[0].id; i = 0; }
+  var r = L[i], defaut = (inscr[r.unit] && inscr[r.unit].pilote) || r.unit, noms = {};
+  Object.keys(inscr).forEach(function (u) { if (inscr[u].pilote) noms[inscr[u].pilote] = 1; }); runs.forEach(function (x) { noms[piloteDe(x)] = 1; });
+  el.innerHTML = '<div class="nav-run"><button class="bouton" id="prec"' + (i >= L.length - 1 ? ' disabled' : '') + '>◀ Précédent</button><span class="pos num">' + (L.length - i) + ' / ' + L.length + '</span><button class="bouton" id="suiv"' + (i <= 0 ? ' disabled' : '') + '>Suivant ▶</button></div>'
+    + '<h2>' + (numDe(r.unit) ? 'N° ' + esc(numDe(r.unit)) + ' · ' : '') + esc(piloteDe(r)) + ' · ' + esc(voitureDe(r.unit)) + ' · ' + esc(classeDe(r)) + ' · run #' + r.seq + ' · ' + r.heure + '</h2>'
+    + '<div class="partiels">' + [['60 pi', r.t60, 0], ['330 pi', r.t330, r.v330], ['1/8 mi', r.t660, r.v660], ['1/4 mi', r.t1320, r.v1320]].map(function (x) {
+        return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(x[1]) + '</div><div class="vit num">' + (x[2] ? k1(x[2]) + ' km/h' : '&nbsp;') + '</div></div>'; }).join('') + '</div>'
+    + '<div style="margin-top:12px">' + courbe(r) + '</div>'
+    + '<p style="margin:10px 0 0">Pilote de ce run : <select id="pilRun"><option value="">' + esc(defaut) + ' (inscrit)</option>'
+    + Object.keys(noms).sort().filter(function (n) { return n !== defaut; }).map(function (n) { return '<option' + (parRun[r.id] === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('')
+    + '</select> <button class="bouton" id="autreNom">Autre nom…</button></p>'
+    + '<details><summary>Détails : le texte brut, tel qu\'il est sur la carte SD</summary><pre>' + esc(r.texte.split('\n').slice(0, 6).join('\n') + '\n…\n' + r.texte.split('\n').filter(function (l) { return l.indexOf('[dump] J') === 0 || l.indexOf('FIN') > 0; }).join('\n')) + '</pre></details>';
+  document.getElementById('prec').onclick = function () { choisi = L[i + 1].id; rendreListe(); rendreDetail(); };
+  document.getElementById('suiv').onclick = function () { choisi = L[i - 1].id; rendreListe(); rendreDetail(); };
+  document.getElementById('pilRun').onchange = function () {
+    if (this.value) parRun[r.id] = this.value; else delete parRun[r.id];
+    lsEcrire('tdl_parRun', parRun); jrn('inscription', 'run ' + r.id + ' : pilote ' + (this.value || defaut + ' (inscrit)')); toutRendre();
+  };
+  document.getElementById('autreNom').onclick = function () {
+    var n = prompt('Nom du pilote pour ce run :');
+    if (n && n.trim()) { parRun[r.id] = n.trim(); lsEcrire('tdl_parRun', parRun); jrn('inscription', 'run ' + r.id + ' : pilote ' + n.trim()); toutRendre(); }
+  };
+}
+function optionsClasses(choix) {
+  return classes.map(function (c) { return '<option' + (c === choix ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value=""' + (!choix ? ' selected' : '') + '>Sans classe</option>';
+}
+function rendreInscriptions() {
+  var units = {}; runs.forEach(function (r) { units[r.unit] = (units[r.unit] || 0) + 1; }); Object.keys(inscr).forEach(function (u) { units[u] = units[u] || 0; });
+  document.getElementById('tInscr').innerHTML = Object.keys(units).sort().map(function (u) {
+    var e = inscr[u] || {};
+    return '<tr><td>' + esc(u) + '<br><span class="aide">' + esc(voitureDe(u)) + '</span></td>'
+      + '<td><input type="text" class="num-course" data-u="' + esc(u) + '" data-champ="num" value="' + esc(e.num || '') + '" placeholder="—" maxlength="4" inputmode="numeric" aria-label="Numéro de course"></td>'
+      + '<td><input type="text" data-u="' + esc(u) + '" data-champ="pilote" value="' + esc(e.pilote || '') + '" placeholder="' + esc(u) + '"></td>'
+      + '<td><select data-u="' + esc(u) + '">' + optionsClasses(e.classe) + '</select></td><td class="n num">' + units[u] + '</td></tr>';
+  }).join('');
+  document.querySelectorAll('#tInscr input').forEach(function (inp) {
+    inp.onchange = function () {
+      var u = this.dataset.u, champ = this.dataset.champ, v = this.value.trim();
+      // ⚠ deux voitures avec le meme numero : on le dit, sans bloquer (la piste peut en avoir attribue deux)
+      if (champ === 'num' && v && Object.keys(inscr).some(function (x) { return x !== u && inscr[x].num === v; })) jrn('erreur', 'numéro ' + v + ' déjà donné à une autre voiture');
+      inscr[u] = inscr[u] || {}; inscr[u][champ] = v; lsEcrire('tdl_inscr', inscr);
+      jrn('inscription', u + ' : ' + (champ === 'num' ? 'numéro « ' + (v || 'aucun') + ' »' : 'pilote « ' + (v || u) + ' »')); toutRendre();
+    };
+  });
+  document.querySelectorAll('#tInscr select').forEach(function (s) {
+    s.onchange = function () { var u = this.dataset.u; inscr[u] = inscr[u] || {}; inscr[u].classe = this.value; lsEcrire('tdl_inscr', inscr); jrn('inscription', u + ' : classe « ' + (this.value || 'Sans classe') + ' »'); toutRendre(); };
+  });
+  document.getElementById('listeClasses').innerHTML = classes.map(function (c, i) {
+    return '<div class="ligne"><input type="text" data-i="' + i + '" value="' + esc(c) + '"><span class="aide num">' + Object.keys(inscr).filter(function (u) { return inscr[u].classe === c; }).length + ' voiture(s)</span></div>';
+  }).join('');
+  document.querySelectorAll('#listeClasses input').forEach(function (inp) {
+    inp.onchange = function () {
+      var i = +this.dataset.i, ancien = classes[i], v = this.value.trim();
+      Object.keys(inscr).forEach(function (u) { if (inscr[u].classe === ancien) inscr[u].classe = v; });
+      if (v) classes[i] = v; else classes.splice(i, 1);
+      lsEcrire('tdl_classes', classes); lsEcrire('tdl_inscr', inscr); jrn('classe', v ? 'classe « ' + ancien + ' » renommée « ' + v + ' »' : 'classe « ' + ancien + ' » retirée'); toutRendre();
+    };
+  });
+}
+function rendreFiltreClasse() {
+  var s = document.getElementById('fClasse'), garde = s.value;
+  s.innerHTML = '<option value="">Toutes les classes</option>' + classes.map(function (c) { return '<option' + (c === garde ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+}
+function rendreJournal() {
+  var el = document.getElementById('journal');
+  el.innerHTML = journal.slice().reverse().map(function (j) {
+    return '<div' + (j.type === 'erreur' ? ' class="j-att"' : '') + '>' + j.t.slice(11, 19) + ' · ' + esc(j.type) + ' · ' + esc(j.msg) + '</div>';
+  }).join('') || '<div class="aide">Vide</div>';
+}
+function toutRendre(anim) { rendreFiltreClasse(); rendreDernier(anim); rendreClassement(); rendreRecents(); rendreListe(); rendreDetail(); rendreInscriptions(); if (vue === 'exporter') rendreJournal(); majEtat(); }
+function majEtat() {
+  var on = etatCx === 'on';
+  document.getElementById('etatE3B4').textContent = on ? 'E3B4 · SD ok · ' + carteSD.length + ' runs sur la carte' : (etatCx === 'cx' ? 'E3B4 · connexion…' : 'E3B4 · non connectée');
+  document.getElementById('pointE3B4').classList.toggle('off', !on);
+  var b = document.getElementById('btnCx');
+  b.classList.toggle('cx-off', etatCx === 'off'); b.classList.toggle('cx-on', on); b.classList.toggle('cx-cx', etatCx === 'cx');
+  document.getElementById('btnCxTxt').textContent = on ? 'Connecté' : (etatCx === 'cx' ? 'Connexion…' : 'Connecter');
+  document.getElementById('bandeau').classList.toggle('vu', etatCx === 'off');
+}
+
+// ===================================================================
+// EXPORT -- lecons de la page TRACLOGICS : la sauvegarde part EN PREMIER,
+// 700 ms entre deux fichiers (les navigateurs brident les rafales), bilan.
+// ===================================================================
+function horodateFichier() { var d = new Date(); return d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '_' + ('0' + d.getHours()).slice(-2) + ('0' + d.getMinutes()).slice(-2); }
+function telecharger(nom, contenu, type) {
+  var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([contenu], { type: type })); a.download = nom;
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  jrn('export', nom + ' (' + Math.round(contenu.length / 1024) + ' ko)');
+}
+function csvCellule(v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+var EXPORTS = {
+  json: function () { return ['draglogics_sauvegarde_' + horodateFichier() + '.json', JSON.stringify({ format: 'draglogics-tableau', version: 'maquette-2', date: new Date().toISOString(), evenement: document.getElementById('evt').value, inscriptions: inscr, classes: classes, parRun: parRun, runs: runs.map(function (r) { return { id: r.id, board: r.board, recuMs: r.recuMs, texte: r.texte }; }), journal: journal }), 'application/json']; },
+  journal: function () { return ['draglogics_journal_' + horodateFichier() + '.csv', 'heure_iso;type;message\n' + journal.map(function (j) { return [j.t, j.type, j.msg].map(csvCellule).join(';'); }).join('\n'), 'text/csv']; },
+  resultats: function () {
+    var t = 'heure;numero;pilote;classe;voiture;run;statut;t60_s;t330_s;t660_s;v660_kmh;t1320_s;v1320_kmh\n' + runs.map(function (r) {
+      return [r.heure, numDe(r.unit), piloteDe(r), classeDe(r), r.unit, r.seq, r.statut, s3(r.t60), s3(r.t330), s3(r.t660), k1(r.v660), s3(r.t1320), k1(r.v1320)].map(csvCellule).join(';');
+    }).join('\n');
+    return ['draglogics_resultats_' + horodateFichier() + '.csv', t, 'text/csv'];
+  },
+  bruts: function () { return ['draglogics_runs_bruts_' + horodateFichier() + '.txt', runs.map(function (r) { return '===== ' + r.id + ' =====\n' + r.texte; }).join('\n\n'), 'text/plain']; }
+};
+function exporter(cles) {
+  var faits = [], i = 0;
+  (function suivant() {
+    if (i >= cles.length) { document.getElementById('bilanExport').textContent = 'Export : ' + faits.length + ' fichier(s) sur ' + cles.length + '.'; return; }
+    var x = EXPORTS[cles[i++]](); telecharger(x[0], x[1], x[2]); faits.push(x[0]);
+    setTimeout(suivant, 700);
+  })();
+}
+document.getElementById('xTout').onclick = function () { exporter(['json', 'journal', 'resultats', 'bruts']); };
+document.getElementById('xJson').onclick = function () { exporter(['json']); };
+document.getElementById('xJournal').onclick = function () { exporter(['journal']); };
+document.getElementById('xResultats').onclick = function () { exporter(['resultats']); };
+document.getElementById('xBruts').onclick = function () { exporter(['bruts']); };
+
+// ===================================================================
+// INTERACTIONS
+// ===================================================================
+function montrer(v) {
+  vue = v;
+  document.querySelectorAll('#barbas [data-vue]').forEach(function (b) { b.classList.toggle('actif', b.dataset.vue === v); });
+  ['tableau', 'passages', 'inscriptions', 'exporter'].forEach(function (x) { document.getElementById('v-' + x).hidden = x !== v; });
+  document.getElementById('outils').style.display = (v === 'tableau' || v === 'passages') ? '' : 'none';
+  if (v === 'exporter') rendreJournal();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('#barbas [data-vue]').forEach(function (b) { b.onclick = function () { montrer(b.dataset.vue); }; });
+document.querySelectorAll('#segDist button').forEach(function (b) {
+  b.onclick = function () { dist = +b.dataset.d; document.querySelectorAll('#segDist button').forEach(function (x) { x.classList.toggle('on', x === b); }); toutRendre(); };
+});
+document.getElementById('fClasse').onchange = function () { choisi = null; toutRendre(); };
+document.addEventListener('click', function (ev) {
+  var t = ev.target.closest('[data-id]'); if (!t || !t.dataset.id) return;
+  if (t.closest('#liste')) { choisi = t.dataset.id; rendreListe(); rendreDetail(); return; }
+  if (t.closest('#classement') || t.closest('#recents')) { choisi = t.dataset.id; montrer('passages'); rendreListe(); rendreDetail(); }
+});
+document.getElementById('fPilote').onchange = function () { choisi = null; rendreListe(); rendreDetail(); };
+document.getElementById('fStatut').onchange = function () { choisi = null; rendreListe(); rendreDetail(); };
+document.getElementById('ajoutClasse').onclick = function () {
+  var inp = document.getElementById('nouvelleClasse'), v = inp.value.trim();
+  if (!v || classes.indexOf(v) >= 0) return;
+  classes.push(v); lsEcrire('tdl_classes', classes); jrn('classe', 'classe « ' + v + ' » ajoutée'); inp.value = ''; toutRendre();
+};
+var evt = document.getElementById('evt'); evt.value = lsLire('tdl_evt', 'Essais du 3 octobre'); evt.onchange = function () { lsEcrire('tdl_evt', evt.value); jrn('page', 'événement : ' + evt.value); };
+// ===================================================================
+// LA CONNEXION BLE -- simulee ici. Dans la vraie page : requestDevice (UUID du service DLAP),
+// lecture du JSON de configuration ("dev":"DLAP", "carte":"SD"), abonnement aux notifications,
+// puis synchronisation : la page demande la liste des runs de la carte et recupere ceux qu'elle n'a pas.
+// ===================================================================
+var etatCx = 'off';
+var carteSD = [];          // DEMO : les runs que la E3B4 garde sur sa carte, connectee ou non
+function synchroniser() {
+  var neufs = 0, deja = 0;
+  carteSD.forEach(function (x) { if (ajouterTexte(x.texte, x.board)) neufs++; else deja++; });
+  jrn('synchro', 'synchronisation : ' + neufs + ' run(s) récupéré(s) de la carte SD, ' + deja + ' déjà dans la base');
+  toutRendre(neufs > 0);
+}
+function connecter() {
+  if (etatCx !== 'off') return;
+  etatCx = 'cx'; majEtat(); jrn('connexion', 'recherche de la E3B4…');
+  setTimeout(function () {
+    etatCx = 'on'; jrn('connexion', 'connectée : DLAP_SD, firmware TDL.0.02 (DÉMO), carte SD ok');
+    majEtat(); synchroniser();
+  }, 1200);
+}
+function deconnecter(motif) { if (etatCx === 'off') return; etatCx = 'off'; jrn(motif ? 'erreur' : 'connexion', motif || 'déconnectée par l’utilisateur'); majEtat(); }
+document.getElementById('btnCx').onclick = function () { if (etatCx === 'on') deconnecter(); else connecter(); };
+document.getElementById('bandeau').onclick = connecter;
+// DEMO : un run arrive sur la carte SD de la E3B4. La page ne le voit en direct QUE si elle est connectee ;
+// sinon il l'attend sur la carte et arrivera a la prochaine synchronisation.
+function nouveauPassage() {
+  var v = VOITURES[1 + Math.floor(alea() * (VOITURES.length - 1))], x = { texte: fabriquerRun(v), board: v.unit };   // pas la simulation du kit
+  carteSD.push(x);
+  if (etatCx === 'on') { var r = ajouterTexte(x.texte, x.board); if (r) toutRendre(true); }
+  else majEtat();
+}
+document.getElementById('btnAjout').onclick = nouveauPassage;
+setInterval(function () { if (document.getElementById('auto').checked) nouveauPassage(); }, 20000);
+setInterval(function () { var d = new Date(); document.getElementById('horloge').textContent = hms(d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()); }, 1000);
+
+jrn('page', 'page ouverte (maquette 3)');
+// DEMO : le matin, 12 runs sont deja sur la carte SD. La page, elle, part vide : ils arrivent a la connexion.
+// le premier run est la COURSE SIMULEE DU KIT (mot `sim`) : ses temps doivent etre ceux du bus CAN
+carteSD.push({ texte: fabriquerRun(VOITURES[0]), board: VOITURES[0].unit });
+for (var n = 0; n < 12; n++) { var v = VOITURES[1 + n % 3]; carteSD.push({ texte: fabriquerRun(v), board: v.unit }); }
+toutRendre(false);
+</script>
+</body>
+</html>
