@@ -9,7 +9,11 @@
      Runs de DEMONSTRATION au format EXACT du texte que le DLPT2 envoie au DLAP
      ([dump] RUN #.. / R,... / [dump] J60.. J1320). lireRun() est le lecteur de la vraie page.
      v2 : barre fixe en bas (Tableau, Passages, Inscriptions, Exporter), classes de competition,
-     journal de diagnostic exportable. -->
+     journal de diagnostic exportable.
+     v4 (30 sept.) : samedi = 1/4 de mile -> plus de selecteur 1/8-1/4 ; le classement se fait au 1/4 et
+     montre aussi le temps et la VITESSE AU 1/8 (demande du pilote). Onglet Reglages : unites, taille du
+     texte, theme clair/sombre/automatique, langue francais/anglais. Le journal de diagnostic reste en
+     francais (il sert au diagnostic, pas au public). -->
 <style>
   :root { --bg:#f3f4f6; --card:#fff; --ink:#111; --muted:#667; --line:#e2e4e8; --sel:#1e63d6; --selbg:#e8f0fd;
           --ok:#1c8f4a; --lent:#c0392b; --att:#e8730c; --tab:#eef0f3; --gros:#0b0d10; }
@@ -32,7 +36,10 @@
   .point { width:9px; height:9px; border-radius:50%; background:var(--ok); }
   .demo { background:var(--att); color:#fff; border:0; font-weight:700; }
   .outils { display:flex; gap:8px; padding:8px 16px; flex-wrap:wrap; align-items:center; }
-  .seg { display:inline-flex; margin-left:auto; }
+  .seg { display:inline-flex; flex-wrap:wrap; }
+  .reglage { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); }
+  .reglage:last-of-type { border-bottom:0; }
+  .reglage .nom { font-weight:600; }
   .seg button { border:1px solid var(--line); background:var(--card); color:var(--ink); padding:8px 14px; font:inherit; cursor:pointer; border-radius:0; }
   .seg button:first-child { border-radius:10px 0 0 10px; } .seg button:last-child { border-radius:0 10px 10px 0; }
   .seg button.on { background:var(--sel); border-color:var(--sel); color:#fff; }
@@ -40,6 +47,9 @@
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
   .card h2 { margin:0 0 10px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
   .grille { display:grid; gap:14px; grid-template-columns:1fr; }
+  /* ⚠ sans min-width:0, une colonne de grille prend la largeur du tableau le plus large et la page deborde
+     (vu en « Tres grand ») ; avec, le tableau defile dans sa carte (.defile) */
+  .grille > * { min-width:0; }
   @media (min-width:1000px) { .grille.tableau { grid-template-columns:1.35fr 1fr; } .grille.passages { grid-template-columns:1.1fr 1fr; } .grille.deux { grid-template-columns:1.4fr 1fr; } }
   .dernier .qui { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
   .dernier .pilote { font-size:34px; font-weight:800; line-height:1.1; }
@@ -57,7 +67,7 @@
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .plaque { border-color:#555; } }
   .dernier .pilote .plaque { font-size:26px; padding:2px 10px; vertical-align:4px; }
   input.num-course { width:5.5em; min-width:0; text-align:center; font-weight:700; }
-  .partiels { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:12px; }
+  .partiels { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin-top:12px; }
   .tuile { background:var(--tab); border-radius:10px; padding:8px 10px; }
   .tuile .lab { font-size:11px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
   .tuile .val { font-size:22px; font-weight:700; }
@@ -112,7 +122,7 @@
   #bandeau.vu { display:block; }
   .point.off { background:var(--att); }
   #barbas button.actif::before { content:''; position:absolute; top:0; left:26%; right:26%; height:3px; border-radius:0 0 3px 3px; background:var(--sel); }
-  @media (max-width:640px) { .dernier .et { font-size:48px; } .partiels { grid-template-columns:repeat(2, 1fr); } .dernier .pilote { font-size:26px; } }
+  @media (max-width:640px) { .dernier .et { font-size:48px; } .partiels { grid-template-columns:repeat(2, minmax(0, 1fr)); } .dernier .pilote { font-size:26px; } }
 </style>
 </head>
 <body>
@@ -121,29 +131,27 @@
        grande marge blanche : on ne montre que la bande du logo (32 % a 70 % de la hauteur), sur une
        plaque blanche, pour que son fond blanc reste propre en mode sombre. -->
   <div class="logo"><img src="../logo.svg" alt="DRAGLOGICS by BPS"></div>
-  <input class="evt" id="evt" aria-label="Nom de l'événement">
+  <input class="evt" id="evt" data-i18n-aria="evtAria" aria-label="Nom de l'événement">
   <span class="chip"><span class="point off" id="pointE3B4"></span><span id="etatE3B4">E3B4 · non connectée</span></span>
-  <span class="chip demo">DÉMO</span>
+  <span class="chip demo" data-i18n="demo">DÉMO</span>
   <span class="horloge num" id="horloge"></span>
 </header>
-<div id="bandeau" role="button">E3B4 déconnectée — les runs ne rentrent pas. Toucher pour connecter.</div>
+<div id="bandeau" role="button" data-i18n="bandeau">E3B4 déconnectée — les runs ne rentrent pas. Toucher pour connecter.</div>
 <div class="outils" id="outils">
-  <select id="fClasse" aria-label="Classe"><option value="">Toutes les classes</option></select>
-  <div class="seg" id="segDist" role="group" aria-label="Distance du classement">
-    <button data-d="660" data-lab="660">1/8 mi</button><button data-d="1320" data-lab="1320" class="on">1/4 mi</button>
-  </div>
+  <select id="fClasse" data-i18n-aria="classeAria" aria-label="Classe"><option value="">Toutes les classes</option></select>
 </div>
 <main>
   <!-- ============ TABLEAU ============ -->
   <section id="v-tableau">
     <div class="grille tableau">
       <div class="card dernier" id="carteDernier"></div>
-      <div class="card"><h2 id="titreClassement">Classement</h2><div class="defile"><table class="tableau-classement"><thead><tr><th>#</th><th>Pilote</th><th class="n">Meilleur</th><th class="n" data-uv="1">Vitesse</th><th class="n" data-lab="60">60 pi</th><th class="n">Écart</th><th class="n">Runs</th></tr></thead><tbody id="classement"></tbody></table></div></div>
-      <div class="card recents"><h2>Passages récents</h2><div id="recents"></div></div>
-      <div class="card"><h2>Démo</h2>
-        <p class="aide">La maquette ajoute un passage de démonstration toutes les 20 s, comme si la E3B4 en recevait un.</p>
-        <button class="bouton" id="btnAjout">+ un passage maintenant</button>
-        <label style="margin-left:10px"><input type="checkbox" id="auto" checked> automatique</label>
+      <!-- le classement se fait au 1/4 ; chaque ligne est la fiche du MEILLEUR run du pilote (60 pi, 1/8 et vitesses de ce run) -->
+      <div class="card"><h2 id="titreClassement">Classement</h2><div class="defile"><table class="tableau-classement"><thead><tr><th>#</th><th data-i18n="thPilote">Pilote</th><th class="n" data-lab="1320">1/4</th><th class="n" data-uvd="1320">V 1/4</th><th class="n" data-lab="660">1/8</th><th class="n" data-uvd="660">V 1/8</th><th class="n" data-lab="60">60 pi</th><th class="n" data-i18n="thEcart">Écart</th><th class="n" data-i18n="thRuns">Runs</th></tr></thead><tbody id="classement"></tbody></table></div></div>
+      <div class="card recents"><h2 data-i18n="recents">Passages récents</h2><div id="recents"></div></div>
+      <div class="card"><h2 data-i18n="demoTitre">Démo</h2>
+        <p class="aide" data-i18n="demoAide">La maquette ajoute un passage de démonstration toutes les 20 s, comme si la E3B4 en recevait un.</p>
+        <button class="bouton" id="btnAjout" data-i18n="demoAjout">+ un passage maintenant</button>
+        <label style="margin-left:10px"><input type="checkbox" id="auto" checked> <span data-i18n="demoAuto">automatique</span></label>
       </div>
     </div>
   </section>
@@ -151,12 +159,12 @@
   <section id="v-passages" hidden>
     <div class="grille passages">
       <div class="card">
-        <h2>Tous les passages</h2>
+        <h2 data-i18n="tousPassages">Tous les passages</h2>
         <div class="filtres">
           <select id="fPilote"><option value="">Tous les pilotes</option></select>
-          <select id="fStatut"><option value="">Tous</option><option value="TERMINE">Terminés</option><option value="ABANDON">Abandons</option></select>
+          <select id="fStatut"><option value="" data-i18n="tous">Tous</option><option value="TERMINE" data-i18n="termines">Terminés</option><option value="ABANDON" data-i18n="abandons">Abandons</option></select>
         </div>
-        <div class="defile"><table><thead><tr><th>Heure</th><th>Pilote</th><th class="n" data-lab="60">60 pi</th><th class="n" data-lab="330">330 pi</th><th class="n" data-lab="660">1/8</th><th class="n" data-lab="1320">1/4</th><th class="n" data-uv="1">Vitesse</th></tr></thead><tbody id="liste"></tbody></table></div>
+        <div class="defile"><table><thead><tr><th data-i18n="thHeure">Heure</th><th data-i18n="thPilote">Pilote</th><th class="n" data-lab="60">60 pi</th><th class="n" data-lab="330">330 pi</th><th class="n" data-lab="660">1/8</th><th class="n" data-uvd="660">V 1/8</th><th class="n" data-lab="1320">1/4</th><th class="n" data-uvd="1320">V 1/4</th></tr></thead><tbody id="liste"></tbody></table></div>
       </div>
       <div class="card" id="detail"></div>
     </div>
@@ -165,33 +173,41 @@
   <section id="v-inscriptions" hidden>
     <div class="grille deux">
       <div class="card">
-        <h2>Inscriptions</h2>
-        <p class="aide">Chaque voiture reçoit son numéro de course, un pilote et une classe. Ils s'appliquent à tous ses runs. Pour un run conduit par quelqu'un d'autre, change le pilote dans Passages : ce choix ne touche que ce run.</p>
-        <div class="defile"><table><thead><tr><th>Voiture (module)</th><th>N°</th><th>Pilote</th><th>Classe</th><th class="n">Runs</th></tr></thead><tbody id="tInscr"></tbody></table></div>
+        <h2 data-i18n="inscriptions">Inscriptions</h2>
+        <p class="aide" data-i18n="inscrAide">Chaque voiture reçoit son numéro de course, un pilote et une classe. Ils s'appliquent à tous ses runs. Pour un run conduit par quelqu'un d'autre, change le pilote dans Passages : ce choix ne touche que ce run.</p>
+        <div class="defile"><table><thead><tr><th data-i18n="thVoiture">Voiture (module)</th><th data-i18n="thNo">N°</th><th data-i18n="thPilote">Pilote</th><th data-i18n="thClasse">Classe</th><th class="n" data-i18n="thRuns">Runs</th></tr></thead><tbody id="tInscr"></tbody></table></div>
       </div>
       <div class="card classes">
-        <h2>Classes de compétition</h2>
+        <h2 data-i18n="classesTitre">Classes de compétition</h2>
         <div id="listeClasses"></div>
-        <div class="ligne"><input type="text" id="nouvelleClasse" placeholder="Nouvelle classe (ex. Street, Modifiée)"><button class="bouton plein" id="ajoutClasse">Ajouter</button></div>
-        <p class="aide">Une classe vidée de son nom est retirée ; ses voitures passent en « Sans classe ».</p>
+        <div class="ligne"><input type="text" id="nouvelleClasse" data-i18n-ph="nouvelleClasse" placeholder="Nouvelle classe (ex. Street, Modifiée)"><button class="bouton plein" id="ajoutClasse" data-i18n="ajouter">Ajouter</button></div>
+        <p class="aide" data-i18n="classeAide">Une classe vidée de son nom est retirée ; ses voitures passent en « Sans classe ».</p>
       </div>
     </div>
   </section>
-  <!-- ============ UNITES ============ -->
-  <section id="v-unites" hidden>
+  <!-- ============ REGLAGES : unites, taille du texte, theme, langue ============ -->
+  <section id="v-reglages" hidden>
     <div class="grille deux">
       <div class="card">
-        <h2>Unités</h2>
-        <p class="aide">Les runs restent enregistrés tels que le kit les envoie (km/h, pieds). Le choix ne change que l’affichage et les exports.</p>
-        <table><tbody>
-          <tr><td>Température</td><td><div class="seg" data-u="temp"><button data-v="C">°C</button><button data-v="F">°F</button></div></td></tr>
-          <tr><td>Vitesse</td><td><div class="seg" data-u="vit"><button data-v="kmh">km/h</button><button data-v="mph">mph</button></div></td></tr>
-          <tr><td>Distance</td><td><div class="seg" data-u="dist"><button data-v="pi">Pieds</button><button data-v="m">Mètres</button></div></td></tr>
-        </tbody></table>
+        <h2 data-i18n="affichage">Affichage</h2>
+        <div class="reglage"><span class="nom" data-i18n="taille">Taille du texte</span>
+          <div class="seg" data-r="taille"><button data-v="petit" data-i18n="tPetit">Petit</button><button data-v="normal" data-i18n="tNormal">Normal</button><button data-v="grand" data-i18n="tGrand">Grand</button><button data-v="tgrand" data-i18n="tTresGrand">Très grand</button></div></div>
+        <div class="reglage"><span class="nom" data-i18n="theme">Thème</span>
+          <div class="seg" data-r="theme"><button data-v="auto" data-i18n="thAuto">Automatique</button><button data-v="light" data-i18n="thClair">Clair</button><button data-v="dark" data-i18n="thSombre">Sombre</button></div></div>
+        <div class="reglage"><span class="nom" data-i18n="langue">Langue</span>
+          <div class="seg" data-r="langue"><button data-v="fr">Français</button><button data-v="en">English</button></div></div>
+        <p class="aide" data-i18n="themeAide">Automatique suit le réglage clair ou sombre de la tablette.</p>
       </div>
       <div class="card">
-        <h2>Météo</h2>
-        <p class="aide">Quand Internet est disponible, la page note la météo au lieu de la course dans chaque run (température, humidité, pression, vent). Elle ne l’affiche pas : elle part dans les exports.</p>
+        <h2 data-i18n="unites">Unités</h2>
+        <div class="reglage"><span class="nom" data-i18n="temperature">Température</span><div class="seg" data-u="temp"><button data-v="C">°C</button><button data-v="F">°F</button></div></div>
+        <div class="reglage"><span class="nom" data-i18n="vitesse">Vitesse</span><div class="seg" data-u="vit"><button data-v="kmh">km/h</button><button data-v="mph">mph</button></div></div>
+        <div class="reglage"><span class="nom" data-i18n="distance">Distance</span><div class="seg" data-u="dist"><button data-v="pi" data-i18n="pieds">Pieds</button><button data-v="m" data-i18n="metres">Mètres</button></div></div>
+        <p class="aide" data-i18n="unitesAide">Les runs restent enregistrés tels que le kit les envoie (km/h, pieds). Le choix ne change que l’affichage et les exports.</p>
+      </div>
+      <div class="card">
+        <h2 data-i18n="meteo">Météo</h2>
+        <p class="aide" data-i18n="meteoAide">Quand Internet est disponible, la page note la météo au lieu de la course dans chaque run (température, humidité, pression, vent). Elle ne l’affiche pas : elle part dans les exports.</p>
         <p class="aide" id="etatMeteo"></p>
       </div>
     </div>
@@ -200,17 +216,17 @@
   <section id="v-exporter" hidden>
     <div class="grille deux">
       <div class="card export">
-        <h2>Exporter</h2>
-        <div class="ligne"><div class="quoi"><b>Tout exporter</b><span class="aide">Les fichiers ci-dessous, un par un. La sauvegarde part en premier.</span></div><button class="bouton plein" id="xTout">Tout</button></div>
-        <div class="ligne"><div class="quoi"><b>Sauvegarde complète (JSON)</b><span class="aide">Runs bruts, inscriptions, classes, journal : tout pour reconstruire la page.</span></div><button class="bouton" id="xJson">JSON</button></div>
-        <div class="ligne"><div class="quoi"><b>Journal de diagnostic (CSV)</b><span class="aide">Ce que la page a vu : connexions, runs reçus, changements, exports, erreurs.</span></div><button class="bouton" id="xJournal">CSV</button></div>
-        <div class="ligne"><div class="quoi"><b>Résultats (CSV)</b><span class="aide">Un run par ligne : heure, pilote, classe, partiels, vitesses, statut.</span></div><button class="bouton" id="xResultats">CSV</button></div>
-        <div class="ligne"><div class="quoi"><b>Runs bruts (TXT)</b><span class="aide">Le texte de chaque run, tel qu'il est sur la carte SD.</span></div><button class="bouton" id="xBruts">TXT</button></div>
-        <div class="ligne"><div class="quoi"><b>Journal de la E3B4 (carte SD)</b><span class="aide">Chaque trame radio reçue et émise. Arrive avec le firmware TDL.0.02.</span></div><button class="bouton" disabled>SD</button></div>
+        <h2 data-i18n="exporter">Exporter</h2>
+        <div class="ligne"><div class="quoi"><b data-i18n="xTout">Tout exporter</b><span class="aide" data-i18n="xToutAide">Les fichiers ci-dessous, un par un. La sauvegarde part en premier.</span></div><button class="bouton plein" id="xTout" data-i18n="btnTout">Tout</button></div>
+        <div class="ligne"><div class="quoi"><b data-i18n="xJson">Sauvegarde complète (JSON)</b><span class="aide" data-i18n="xJsonAide">Runs bruts, inscriptions, classes, journal : tout pour reconstruire la page.</span></div><button class="bouton" id="xJson">JSON</button></div>
+        <div class="ligne"><div class="quoi"><b data-i18n="xJournal">Journal de diagnostic (CSV)</b><span class="aide" data-i18n="xJournalAide">Ce que la page a vu : connexions, runs reçus, changements, exports, erreurs.</span></div><button class="bouton" id="xJournal">CSV</button></div>
+        <div class="ligne"><div class="quoi"><b data-i18n="xRes">Résultats (CSV)</b><span class="aide" data-i18n="xResAide">Un run par ligne : heure, pilote, classe, partiels, vitesses, statut.</span></div><button class="bouton" id="xResultats">CSV</button></div>
+        <div class="ligne"><div class="quoi"><b data-i18n="xBruts">Runs bruts (TXT)</b><span class="aide" data-i18n="xBrutsAide">Le texte de chaque run, tel qu'il est sur la carte SD.</span></div><button class="bouton" id="xBruts">TXT</button></div>
+        <div class="ligne"><div class="quoi"><b data-i18n="xSd">Journal de la E3B4 (carte SD)</b><span class="aide" data-i18n="xSdAide">Chaque trame radio reçue et émise. La E3B4 sait l’envoyer (TDL.0.02) ; le bouton marchera avec la vraie connexion BLE.</span></div><button class="bouton" disabled>SD</button></div>
         <p class="aide" id="bilanExport"></p>
       </div>
       <div class="card">
-        <h2>Journal de diagnostic</h2>
+        <h2 data-i18n="journalDiag">Journal de diagnostic</h2>
         <div class="journal" id="journal"></div>
       </div>
     </div>
@@ -218,11 +234,11 @@
 </main>
 <div id="barbas">
   <button id="btnCx" class="cx-off"><svg viewBox="0 0 24 24"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg><span id="btnCxTxt">Connecter</span></button>
-  <button data-vue="tableau" class="actif"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>Tableau</button>
-  <button data-vue="passages"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Passages</button>
-  <button data-vue="inscriptions"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6"/><path d="M16 7h5M16 11h5M18.5 4.5v9"/></svg>Inscriptions</button>
-  <button data-vue="unites"><svg viewBox="0 0 24 24"><path d="M3 17h18M5 17v-3M9 17v-5M13 17v-3M17 17v-5"/><path d="M3 7h10M16 7h5"/><circle cx="14.5" cy="7" r="1.8"/></svg>Unités</button>
-  <button data-vue="exporter"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 17v2.5h16V17"/></svg>Exporter</button>
+  <button data-vue="tableau" class="actif"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg><span data-i18n="bTableau">Tableau</span></button>
+  <button data-vue="passages"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span data-i18n="bPassages">Passages</span></button>
+  <button data-vue="inscriptions"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6"/><path d="M16 7h5M16 11h5M18.5 4.5v9"/></svg><span data-i18n="bInscr">Inscriptions</span></button>
+  <button data-vue="reglages"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg><span data-i18n="bReglages">Réglages</span></button>
+  <button data-vue="exporter"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 17v2.5h16V17"/></svg><span data-i18n="bExporter">Exporter</span></button>
 </div>
 
 <script>
@@ -388,7 +404,7 @@ function jrn(type, msg) {
   if (vue === 'exporter') rendreJournal();
 }
 function piloteDe(r) { return parRun[r.id] || (inscr[r.unit] && inscr[r.unit].pilote) || r.unit; }
-function classeDe(r) { return (inscr[r.unit] && inscr[r.unit].classe) || 'Sans classe'; }
+function classeDe(r) { return (inscr[r.unit] && inscr[r.unit].classe) || t('sansClasse'); }
 function numDe(u) { return (inscr[u] && inscr[u].num) || ''; }
 // la plaque : rien si la voiture n'a pas encore de numero (on n'invente pas de numero)
 function plaque(u) { var n = numDe(u); return n ? '<span class="plaque">' + esc(n) + '</span>' : ''; }
@@ -409,7 +425,104 @@ function s3(ms) { return ms ? (ms / 1000).toFixed(3) : '—'; }
 var U = lsLire('tdl_unites', { temp: 'C', vit: 'kmh', dist: 'pi' });
 function k1(v) { return v ? (U.vit === 'mph' ? v * 0.621371 : v).toFixed(1) : '—'; }
 function uV() { return U.vit === 'mph' ? 'mph' : 'km/h'; }
-function lab(D) { return (U.dist === 'm' ? { 60: '18 m', 330: '101 m', 660: '201 m', 1320: '402 m' } : { 60: '60 pi', 330: '330 pi', 660: '1/8 mi', 1320: '1/4 mi' })[D]; }
+function lab(D) { return (U.dist === 'm' ? { 60: '18 m', 330: '101 m', 660: '201 m', 1320: '402 m' } : { 60: '60 ' + t('pi'), 330: '330 ' + t('pi'), 660: '1/8 mi', 1320: '1/4 mi' })[D]; }
+// l'etiquette courte d'une colonne : « 1/8 », « 1/4 » en pieds ; la distance en metres sinon
+function court(D) { return (D >= 660 && U.dist !== 'm') ? (D === 660 ? '1/8' : '1/4') : lab(D); }
+
+// ===================================================================
+// [reglages] taille du texte, theme, langue (demande du pilote, 30 sept. 2026)
+// ===================================================================
+var R = lsLire('tdl_reglages', { taille: 'normal', theme: 'auto', langue: 'fr' });
+var TAILLES = { petit: 0.9, normal: 1, grand: 1.15, tgrand: 1.3 };
+// ⚠ Le journal de diagnostic reste en francais : il sert au diagnostic, pas au public.
+var TXT = {
+  fr: {
+    titre: 'Tableau DRAGLOGICS', evtAria: 'Nom de l’événement', demo: 'DÉMO', bandeau: 'E3B4 déconnectée — les runs ne rentrent pas. Toucher pour connecter.',
+    classeAria: 'Classe', toutesClasses: 'Toutes les classes', toutesClassesMin: 'toutes les classes', classement: 'Classement',
+    thPilote: 'Pilote', thEcart: 'Écart', thRuns: 'Runs', thHeure: 'Heure', thVoiture: 'Voiture (module)', thNo: 'N°', thClasse: 'Classe',
+    recents: 'Passages récents', demoTitre: 'Démo', demoAide: 'La maquette ajoute un passage de démonstration toutes les 20 s, comme si la E3B4 en recevait un.',
+    demoAjout: '+ un passage maintenant', demoAuto: 'automatique',
+    tousPassages: 'Tous les passages', tousPilotes: 'Tous les pilotes', tous: 'Tous', termines: 'Terminés', abandons: 'Abandons',
+    inscriptions: 'Inscriptions', inscrAide: 'Chaque voiture reçoit son numéro de course, un pilote et une classe. Ils s’appliquent à tous ses runs. Pour un run conduit par quelqu’un d’autre, change le pilote dans Passages : ce choix ne touche que ce run.',
+    classesTitre: 'Classes de compétition', nouvelleClasse: 'Nouvelle classe (ex. Street, Modifiée)', ajouter: 'Ajouter',
+    classeAide: 'Une classe vidée de son nom est retirée ; ses voitures passent en « Sans classe ».', sansClasse: 'Sans classe',
+    affichage: 'Affichage', taille: 'Taille du texte', tPetit: 'Petit', tNormal: 'Normal', tGrand: 'Grand', tTresGrand: 'Très grand',
+    theme: 'Thème', thAuto: 'Automatique', thClair: 'Clair', thSombre: 'Sombre', langue: 'Langue',
+    themeAide: 'Automatique suit le réglage clair ou sombre de la tablette.',
+    unites: 'Unités', temperature: 'Température', vitesse: 'Vitesse', distance: 'Distance', pieds: 'Pieds', metres: 'Mètres', pi: 'pi',
+    unitesAide: 'Les runs restent enregistrés tels que le kit les envoie (km/h, pieds). Le choix ne change que l’affichage et les exports.',
+    meteo: 'Météo', meteoAide: 'Quand Internet est disponible, la page note la météo au lieu de la course dans chaque run (température, humidité, pression, vent). Elle ne l’affiche pas : elle part dans les exports.',
+    meteoEtat: '{a} run(s) avec la météo, {b} sans', pasReseau: ' (pas de réseau)', lieuTablette: '. Lieu : position de la tablette.', lieuInconnu: '. Lieu : pas encore connu.',
+    exporter: 'Exporter', xTout: 'Tout exporter', xToutAide: 'Les fichiers ci-dessous, un par un. La sauvegarde part en premier.', btnTout: 'Tout',
+    xJson: 'Sauvegarde complète (JSON)', xJsonAide: 'Runs bruts, inscriptions, classes, journal : tout pour reconstruire la page.',
+    xJournal: 'Journal de diagnostic (CSV)', xJournalAide: 'Ce que la page a vu : connexions, runs reçus, changements, exports, erreurs.',
+    xRes: 'Résultats (CSV)', xResAide: 'Un run par ligne : heure, pilote, classe, partiels, vitesses, statut.',
+    xBruts: 'Runs bruts (TXT)', xBrutsAide: 'Le texte de chaque run, tel qu’il est sur la carte SD.',
+    xSd: 'Journal de la E3B4 (carte SD)', xSdAide: 'Chaque trame radio reçue et émise. La E3B4 sait l’envoyer (TDL.0.02) ; le bouton marchera avec la vraie connexion BLE.',
+    journalDiag: 'Journal de diagnostic', bilanExport: 'Export : {a} fichier(s) sur {b}.',
+    bConnecter: 'Connecter', bConnexion: 'Connexion…', bConnecte: 'Connecté', bTableau: 'Tableau', bPassages: 'Passages', bInscr: 'Inscriptions', bReglages: 'Réglages', bExporter: 'Exporter',
+    e3b4On: 'E3B4 · SD ok · {n} runs sur la carte', e3b4Cx: 'E3B4 · connexion…', e3b4Off: 'E3B4 · non connectée',
+    dernier: 'Dernier passage', attente: 'En attente du premier run…', vsMeilleur: 'vs meilleur', meilleurPerso: 'Meilleur perso',
+    ABANDON: 'Abandon', TERMINE: 'Terminé', abandonMin: 'abandon', aucunRunClasse: 'Aucun run dans cette classe', aucunRun: 'Aucun run', run: 'Run',
+    pasEch: 'Pas d’échantillons dans ce run.', tempsAxe: 'temps (s) →', prec: '◀ Précédent', suiv: 'Suivant ▶', no: 'N° ',
+    piloteRun: 'Pilote de ce run : ', inscrit: ' (inscrit)', autreNom: 'Autre nom…', promptNom: 'Nom du pilote pour ce run :',
+    details: 'Détails : le texte brut, tel qu’il est sur la carte SD', numAria: 'Numéro de course', voitures: ' voiture(s)'
+  },
+  en: {
+    titre: 'DRAGLOGICS board', evtAria: 'Event name', demo: 'DEMO', bandeau: 'E3B4 disconnected — runs are not coming in. Tap to connect.',
+    classeAria: 'Class', toutesClasses: 'All classes', toutesClassesMin: 'all classes', classement: 'Leaderboard',
+    thPilote: 'Driver', thEcart: 'Gap', thRuns: 'Runs', thHeure: 'Time', thVoiture: 'Car (module)', thNo: 'No.', thClasse: 'Class',
+    recents: 'Recent passes', demoTitre: 'Demo', demoAide: 'The mock-up adds a demo pass every 20 s, as if the E3B4 received one.',
+    demoAjout: '+ one pass now', demoAuto: 'automatic',
+    tousPassages: 'All passes', tousPilotes: 'All drivers', tous: 'All', termines: 'Completed', abandons: 'Aborted',
+    inscriptions: 'Entries', inscrAide: 'Each car gets its race number, a driver and a class. They apply to all its runs. For a run driven by someone else, change the driver in Passes: that choice only affects that run.',
+    classesTitre: 'Competition classes', nouvelleClasse: 'New class (e.g. Street, Modified)', ajouter: 'Add',
+    classeAide: 'A class with an empty name is removed; its cars go to “No class”.', sansClasse: 'No class',
+    affichage: 'Display', taille: 'Text size', tPetit: 'Small', tNormal: 'Normal', tGrand: 'Large', tTresGrand: 'Extra large',
+    theme: 'Theme', thAuto: 'Automatic', thClair: 'Light', thSombre: 'Dark', langue: 'Language',
+    themeAide: 'Automatic follows the light or dark setting of the tablet.',
+    unites: 'Units', temperature: 'Temperature', vitesse: 'Speed', distance: 'Distance', pieds: 'Feet', metres: 'Meters', pi: 'ft',
+    unitesAide: 'Runs stay stored as the kit sends them (km/h, feet). This choice only changes the display and the exports.',
+    meteo: 'Weather', meteoAide: 'When Internet is available, the page records the weather at the track in each run (temperature, humidity, pressure, wind). It does not show it: it goes into the exports.',
+    meteoEtat: '{a} run(s) with weather, {b} without', pasReseau: ' (no network)', lieuTablette: '. Location: tablet position.', lieuInconnu: '. Location: not known yet.',
+    exporter: 'Export', xTout: 'Export all', xToutAide: 'The files below, one by one. The backup goes first.', btnTout: 'All',
+    xJson: 'Full backup (JSON)', xJsonAide: 'Raw runs, entries, classes, log: everything to rebuild the page.',
+    xJournal: 'Diagnostic log (CSV)', xJournalAide: 'What the page saw: connections, runs received, changes, exports, errors.',
+    xRes: 'Results (CSV)', xResAide: 'One run per line: time, driver, class, splits, speeds, status.',
+    xBruts: 'Raw runs (TXT)', xBrutsAide: 'The text of each run, as it is on the SD card.',
+    xSd: 'E3B4 log (SD card)', xSdAide: 'Every radio frame received and sent. The E3B4 can send it (TDL.0.02); the button will work with the real BLE connection.',
+    journalDiag: 'Diagnostic log', bilanExport: 'Export: {a} file(s) of {b}.',
+    bConnecter: 'Connect', bConnexion: 'Connecting…', bConnecte: 'Connected', bTableau: 'Board', bPassages: 'Passes', bInscr: 'Entries', bReglages: 'Settings', bExporter: 'Export',
+    e3b4On: 'E3B4 · SD ok · {n} runs on the card', e3b4Cx: 'E3B4 · connecting…', e3b4Off: 'E3B4 · not connected',
+    dernier: 'Last pass', attente: 'Waiting for the first run…', vsMeilleur: 'vs best', meilleurPerso: 'Personal best',
+    ABANDON: 'Aborted', TERMINE: 'Completed', abandonMin: 'aborted', aucunRunClasse: 'No run in this class', aucunRun: 'No run', run: 'Run',
+    pasEch: 'No samples in this run.', tempsAxe: 'time (s) →', prec: '◀ Previous', suiv: 'Next ▶', no: 'No. ',
+    piloteRun: 'Driver of this run: ', inscrit: ' (entered)', autreNom: 'Other name…', promptNom: 'Driver name for this run:',
+    details: 'Details: the raw text, as it is on the SD card', numAria: 'Race number', voitures: ' car(s)'
+  }
+};
+// ⚠ une cle absente se voit : elle s'affiche telle quelle (jamais un vide muet)
+function t(k, v) {
+  var s = (TXT[R.langue] || TXT.fr)[k]; if (s == null) s = TXT.fr[k]; if (s == null) s = k;
+  if (v) Object.keys(v).forEach(function (x) { s = s.replace('{' + x + '}', v[x]); });
+  return s;
+}
+function statutTxt(s) { return TXT.fr[s] ? t(s) : s; }
+function appliquerReglages() {
+  var h = document.documentElement;
+  if (R.theme === 'auto') h.removeAttribute('data-theme'); else h.setAttribute('data-theme', R.theme);
+  h.lang = R.langue === 'en' ? 'en' : 'fr-CA';
+  document.title = t('titre');
+  var z = TAILLES[R.taille] || 1;
+  // le contenu grossit ; l'en-tete et la barre du bas gardent leur taille (ils doivent toujours tenir)
+  ['main', '#outils'].forEach(function (q) { var e = document.querySelector(q); if (e) e.style.zoom = z === 1 ? '' : String(z); });
+  document.querySelectorAll('[data-i18n]').forEach(function (e) { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(function (e) { e.placeholder = t(e.dataset.i18nPh); });
+  document.querySelectorAll('[data-i18n-aria]').forEach(function (e) { e.setAttribute('aria-label', t(e.dataset.i18nAria)); });
+  document.querySelectorAll('#v-reglages .seg[data-r]').forEach(function (s) {
+    s.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', R[s.dataset.r] === b.dataset.v); });
+  });
+}
 function tC(c) { return c == null ? '' : (U.temp === 'F' ? c * 9 / 5 + 32 : c).toFixed(1); }
 function ecartTxt(ms) { return (ms > 0 ? '+' : '') + (ms / 1000).toFixed(3); }
 function meilleurDe(pil, cle, sauf) {
@@ -424,45 +537,47 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function 
 // ===================================================================
 function rendreDernier(anim) {
   var el = document.getElementById('carteDernier');
-  if (!runs.length) { el.innerHTML = '<h2>Dernier passage</h2><div class="vide">En attente du premier run…</div>'; return; }
+  if (!runs.length) { el.innerHTML = '<h2>' + t('dernier') + '</h2><div class="vide">' + t('attente') + '</div>'; return; }
   var r = runs[runs.length - 1], pil = piloteDe(r), cle = 't' + dist;
   var avant = meilleurDe(pil, cle, r), pb = r[cle] && (avant == null || r[cle] < avant);
   var tuiles = [[lab(60), 't60', null], [lab(330), 't330', 'v330'], [lab(660), 't660', 'v660'], [lab(1320), 't1320', 'v1320']].map(function (x) {
     var b = meilleurDe(pil, x[1], r), e = (r[x[1]] && b != null) ? r[x[1]] - b : null;
     return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(r[x[1]]) + '</div>'
       + (x[2] ? '<div class="vit num">' + k1(r[x[2]]) + ' ' + uV() + '</div>' : '<div class="vit">&nbsp;</div>')
-      + '<div class="ecart num ' + (e == null ? '' : e > 0 ? 'plus' : 'moins') + '">' + (e == null ? '&nbsp;' : ecartTxt(e) + ' vs meilleur') + '</div></div>';
+      + '<div class="ecart num ' + (e == null ? '' : e > 0 ? 'plus' : 'moins') + '">' + (e == null ? '&nbsp;' : ecartTxt(e) + ' ' + t('vsMeilleur')) + '</div></div>';
   }).join('');
-  el.innerHTML = '<h2>Dernier passage · ' + r.heure + '</h2>'
+  el.innerHTML = '<h2>' + t('dernier') + ' · ' + r.heure + '</h2>'
     + '<div class="qui"><span class="pilote">' + plaque(r.unit) + esc(pil) + '</span><span class="voiture">' + esc(voitureDe(r.unit)) + ' · run #' + r.seq + '</span>'
     + '<span class="badge cl">' + esc(classeDe(r)) + '</span>'
-    + (pb ? '<span class="badge pb">Meilleur perso</span>' : '') + (r.statut !== 'TERMINE' ? '<span class="badge att">' + esc(r.statut) + '</span>' : '') + '</div>'
+    + (pb ? '<span class="badge pb">' + t('meilleurPerso') + '</span>' : '') + (r.statut !== 'TERMINE' ? '<span class="badge att">' + esc(statutTxt(r.statut)) + '</span>' : '') + '</div>'
     + '<div class="et num">' + s3(r[cle]) + '<small>' + lab(dist) + ' · ' + k1(vD(r, dist)) + ' ' + uV() + '</small></div>'
     + '<div class="partiels">' + tuiles + '</div>';
   if (anim) { el.classList.remove('arrive'); void el.offsetWidth; el.classList.add('arrive'); }
 }
+// [v4] classement au 1/4 (dist = 1320, fixe). Une ligne = la fiche du MEILLEUR run du pilote : son 60 pi,
+// son 1/8 et ses deux vitesses viennent de CE run (pas des meilleurs partiels pris dans des runs differents).
 function rendreClassement() {
   var cle = 't' + dist, fc = document.getElementById('fClasse').value, par = {};
   runs.forEach(function (r) {
     if (fc && classeDe(r) !== fc) return;
-    var p = piloteDe(r); par[p] = par[p] || { pil: p, unit: r.unit, cl: classeDe(r), n: 0, best: null, run: null, b60: null };
+    var p = piloteDe(r); par[p] = par[p] || { pil: p, unit: r.unit, cl: classeDe(r), n: 0, best: null, run: null };
     var e = par[p]; e.n++;
     if (r[cle] && (e.best == null || r[cle] < e.best)) { e.best = r[cle]; e.run = r; }
-    if (r.t60 && (e.b60 == null || r.t60 < e.b60)) e.b60 = r.t60;
   });
   var L = Object.keys(par).map(function (k) { return par[k]; }).sort(function (a, b) { return (a.best || 1e9) - (b.best || 1e9); });
   var tete = L.length && L[0].best;
-  document.getElementById('titreClassement').textContent = 'Classement · ' + (fc || 'toutes les classes') + ' · ' + lab(dist);
+  document.getElementById('titreClassement').textContent = t('classement') + ' · ' + (fc || t('toutesClassesMin')) + ' · ' + lab(dist);
   document.getElementById('classement').innerHTML = L.length ? L.map(function (e, i) {
+    var r = e.run || {};
     return '<tr class="clic" data-id="' + (e.run ? e.run.id : '') + '"><td class="rang">' + (e.best ? i + 1 : '—') + '</td><td>' + plaque(e.unit) + '<b>' + esc(e.pil) + '</b><br><span class="aide">' + esc(voitureDe(e.unit)) + (fc ? '' : ' · ' + esc(e.cl)) + '</span></td>'
-      + '<td class="n num"><b>' + s3(e.best) + '</b></td><td class="n num">' + k1(e.run ? vD(e.run, dist) : 0) + '</td><td class="n num">' + s3(e.b60) + '</td>'
+      + '<td class="n num"><b>' + s3(e.best) + '</b></td><td class="n num">' + k1(r.v1320) + '</td><td class="n num">' + s3(r.t660) + '</td><td class="n num">' + k1(r.v660) + '</td><td class="n num">' + s3(r.t60) + '</td>'
       + '<td class="n num">' + (e.best && tete && e.best !== tete ? '+' + ((e.best - tete) / 1000).toFixed(3) : '') + '</td><td class="n num">' + e.n + '</td></tr>';
-  }).join('') : '<tr><td colspan="7" class="vide">Aucun run dans cette classe</td></tr>';
+  }).join('') : '<tr><td colspan="9" class="vide">' + t('aucunRunClasse') + '</td></tr>';
 }
 function rendreRecents() {
   var L = runs.slice(-6).reverse();
   document.getElementById('recents').innerHTML = L.length ? L.map(function (r) {
-    return '<div class="ligne" data-id="' + r.id + '"><span class="h num">' + r.heure.slice(0, 5) + '</span><span class="p">' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</span><span class="t num">' + s3(r['t' + dist]) + '</span><span class="aide num">' + k1(vD(r, dist)) + ' ' + uV() + '</span></div>';
+    return '<div class="ligne" data-id="' + r.id + '"><span class="h num">' + r.heure.slice(0, 5) + '</span><span class="p">' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">' + t('abandonMin') + '</span>' : '') + '</span><span class="t num">' + s3(r['t' + dist]) + '</span><span class="aide num">' + court(660) + ' ' + k1(r.v660) + ' · ' + court(1320) + ' ' + k1(r.v1320) + ' ' + uV() + '</span></div>';
   }).join('') : '<div class="vide">—</div>';
 }
 function listeFiltree() {
@@ -472,18 +587,18 @@ function listeFiltree() {
 function rendreListe() {
   var sel = document.getElementById('fPilote'), garde = sel.value, noms = {};
   runs.forEach(function (r) { noms[piloteDe(r)] = 1; });
-  sel.innerHTML = '<option value="">Tous les pilotes</option>' + Object.keys(noms).sort().map(function (n) { return '<option' + (n === garde ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
+  sel.innerHTML = '<option value="">' + t('tousPilotes') + '</option>' + Object.keys(noms).sort().map(function (n) { return '<option' + (n === garde ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('');
   var L = listeFiltree();
   document.getElementById('liste').innerHTML = L.length ? L.map(function (r) {
-    return '<tr class="clic' + (r.id === choisi ? ' choisi' : '') + '" data-id="' + r.id + '"><td class="num">' + r.heure + '</td><td>' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</td>'
-      + '<td class="n num">' + s3(r.t60) + '</td><td class="n num">' + s3(r.t330) + '</td><td class="n num">' + s3(r.t660) + '</td><td class="n num"><b>' + s3(r.t1320) + '</b></td><td class="n num">' + k1(vD(r, dist)) + '</td></tr>';
-  }).join('') : '<tr><td colspan="7" class="vide">Aucun run</td></tr>';
+    return '<tr class="clic' + (r.id === choisi ? ' choisi' : '') + '" data-id="' + r.id + '"><td class="num">' + r.heure + '</td><td>' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">' + t('abandonMin') + '</span>' : '') + '</td>'
+      + '<td class="n num">' + s3(r.t60) + '</td><td class="n num">' + s3(r.t330) + '</td><td class="n num">' + s3(r.t660) + '</td><td class="n num">' + k1(r.v660) + '</td><td class="n num"><b>' + s3(r.t1320) + '</b></td><td class="n num">' + k1(r.v1320) + '</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="vide">' + t('aucunRun') + '</td></tr>';
 }
 function courbe(r) {
   // l'axe du temps est celui des lignes R (depuis le declenchement) ; un jalon s'y place a T0 + t
   var t0 = r.t0 || 0, fin = r.t1320 ? t0 + r.t1320 + 1500 : Infinity;
   var fk = U.vit === 'mph' ? 0.621371 : 1;
-  var e = r.ech.filter(function (x) { return x.t >= 0 && x.t <= fin; }).map(function (x) { return { t: x.t, v: x.v * fk, d: x.d }; }); if (e.length < 2) return '<p class="aide">Pas d\'échantillons dans ce run.</p>';
+  var e = r.ech.filter(function (x) { return x.t >= 0 && x.t <= fin; }).map(function (x) { return { t: x.t, v: x.v * fk, d: x.d }; }); if (e.length < 2) return '<p class="aide">' + t('pasEch') + '</p>';
   var W = 600, H = 190, g = 34, tmax = e[e.length - 1].t, vmax = 0; e.forEach(function (x) { if (x.v > vmax) vmax = x.v; });
   vmax = Math.ceil(vmax / 20) * 20 || 20;
   var X = function (t) { return g + (W - g - 8) * t / tmax; }, Y = function (v) { return H - 18 - (H - 28) * v / vmax; };
@@ -494,23 +609,23 @@ function courbe(r) {
     return '<line x1="' + xp + '" x2="' + xp + '" y1="8" y2="' + (H - 18) + '" stroke="var(--sel)" stroke-dasharray="3 3"/><text x="' + (xp + 3) + '" y="16">' + lab(x[0]) + '</text>';
   }).join('');
   return '<svg class="courbe" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + grille + jal + '<path d="' + p + '" fill="none" stroke="var(--ink)" stroke-width="2"/>'
-    + '<text x="' + (W - 60) + '" y="' + (H - 4) + '">temps (s) →</text><text x="' + g + '" y="' + (H - 4) + '">' + uV() + '</text></svg>';
+    + '<text x="' + (W - 60) + '" y="' + (H - 4) + '">' + t('tempsAxe') + '</text><text x="' + g + '" y="' + (H - 4) + '">' + uV() + '</text></svg>';
 }
 function rendreDetail() {
   var el = document.getElementById('detail'), L = listeFiltree();
   var i = L.findIndex(function (r) { return r.id === choisi; });
-  if (i < 0) { if (!L.length) { el.innerHTML = '<h2>Run</h2><div class="vide">Aucun run</div>'; return; } choisi = L[0].id; i = 0; }
+  if (i < 0) { if (!L.length) { el.innerHTML = '<h2>' + t('run') + '</h2><div class="vide">' + t('aucunRun') + '</div>'; return; } choisi = L[0].id; i = 0; }
   var r = L[i], defaut = (inscr[r.unit] && inscr[r.unit].pilote) || r.unit, noms = {};
   Object.keys(inscr).forEach(function (u) { if (inscr[u].pilote) noms[inscr[u].pilote] = 1; }); runs.forEach(function (x) { noms[piloteDe(x)] = 1; });
-  el.innerHTML = '<div class="nav-run"><button class="bouton" id="prec"' + (i >= L.length - 1 ? ' disabled' : '') + '>◀ Précédent</button><span class="pos num">' + (L.length - i) + ' / ' + L.length + '</span><button class="bouton" id="suiv"' + (i <= 0 ? ' disabled' : '') + '>Suivant ▶</button></div>'
-    + '<h2>' + (numDe(r.unit) ? 'N° ' + esc(numDe(r.unit)) + ' · ' : '') + esc(piloteDe(r)) + ' · ' + esc(voitureDe(r.unit)) + ' · ' + esc(classeDe(r)) + ' · run #' + r.seq + ' · ' + r.heure + '</h2>'
+  el.innerHTML = '<div class="nav-run"><button class="bouton" id="prec"' + (i >= L.length - 1 ? ' disabled' : '') + '>' + t('prec') + '</button><span class="pos num">' + (L.length - i) + ' / ' + L.length + '</span><button class="bouton" id="suiv"' + (i <= 0 ? ' disabled' : '') + '>' + t('suiv') + '</button></div>'
+    + '<h2>' + (numDe(r.unit) ? t('no') + esc(numDe(r.unit)) + ' · ' : '') + esc(piloteDe(r)) + ' · ' + esc(voitureDe(r.unit)) + ' · ' + esc(classeDe(r)) + ' · run #' + r.seq + ' · ' + r.heure + (r.statut !== 'TERMINE' ? ' · ' + esc(statutTxt(r.statut)) : '') + '</h2>'
     + '<div class="partiels">' + [[lab(60), r.t60, 0], [lab(330), r.t330, r.v330], [lab(660), r.t660, r.v660], [lab(1320), r.t1320, r.v1320]].map(function (x) {
         return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(x[1]) + '</div><div class="vit num">' + (x[2] ? k1(x[2]) + ' ' + uV() : '&nbsp;') + '</div></div>'; }).join('') + '</div>'
     + '<div style="margin-top:12px">' + courbe(r) + '</div>'
-    + '<p style="margin:10px 0 0">Pilote de ce run : <select id="pilRun"><option value="">' + esc(defaut) + ' (inscrit)</option>'
+    + '<p style="margin:10px 0 0">' + t('piloteRun') + '<select id="pilRun"><option value="">' + esc(defaut) + t('inscrit') + '</option>'
     + Object.keys(noms).sort().filter(function (n) { return n !== defaut; }).map(function (n) { return '<option' + (parRun[r.id] === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('')
-    + '</select> <button class="bouton" id="autreNom">Autre nom…</button></p>'
-    + '<details><summary>Détails : le texte brut, tel qu\'il est sur la carte SD</summary><pre>' + esc(r.texte.split('\n').slice(0, 6).join('\n') + '\n…\n' + r.texte.split('\n').filter(function (l) { return l.indexOf('[dump] J') === 0 || l.indexOf('FIN') > 0; }).join('\n')) + '</pre></details>';
+    + '</select> <button class="bouton" id="autreNom">' + t('autreNom') + '</button></p>'
+    + '<details><summary>' + t('details') + '</summary><pre>' + esc(r.texte.split('\n').slice(0, 6).join('\n') + '\n…\n' + r.texte.split('\n').filter(function (l) { return l.indexOf('[dump] J') === 0 || l.indexOf('FIN') > 0; }).join('\n')) + '</pre></details>';
   document.getElementById('prec').onclick = function () { choisi = L[i + 1].id; rendreListe(); rendreDetail(); };
   document.getElementById('suiv').onclick = function () { choisi = L[i - 1].id; rendreListe(); rendreDetail(); };
   document.getElementById('pilRun').onchange = function () {
@@ -518,19 +633,19 @@ function rendreDetail() {
     lsEcrire('tdl_parRun', parRun); jrn('inscription', 'run ' + r.id + ' : pilote ' + (this.value || defaut + ' (inscrit)')); toutRendre();
   };
   document.getElementById('autreNom').onclick = function () {
-    var n = prompt('Nom du pilote pour ce run :');
+    var n = prompt(t('promptNom'));
     if (n && n.trim()) { parRun[r.id] = n.trim(); lsEcrire('tdl_parRun', parRun); jrn('inscription', 'run ' + r.id + ' : pilote ' + n.trim()); toutRendre(); }
   };
 }
 function optionsClasses(choix) {
-  return classes.map(function (c) { return '<option' + (c === choix ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value=""' + (!choix ? ' selected' : '') + '>Sans classe</option>';
+  return classes.map(function (c) { return '<option' + (c === choix ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '<option value=""' + (!choix ? ' selected' : '') + '>' + t('sansClasse') + '</option>';
 }
 function rendreInscriptions() {
   var units = {}; runs.forEach(function (r) { units[r.unit] = (units[r.unit] || 0) + 1; }); Object.keys(inscr).forEach(function (u) { units[u] = units[u] || 0; });
   document.getElementById('tInscr').innerHTML = Object.keys(units).sort().map(function (u) {
     var e = inscr[u] || {};
     return '<tr><td>' + esc(u) + '<br><span class="aide">' + esc(voitureDe(u)) + '</span></td>'
-      + '<td><input type="text" class="num-course" data-u="' + esc(u) + '" data-champ="num" value="' + esc(e.num || '') + '" placeholder="—" maxlength="4" inputmode="numeric" aria-label="Numéro de course"></td>'
+      + '<td><input type="text" class="num-course" data-u="' + esc(u) + '" data-champ="num" value="' + esc(e.num || '') + '" placeholder="—" maxlength="4" inputmode="numeric" aria-label="' + esc(t('numAria')) + '"></td>'
       + '<td><input type="text" data-u="' + esc(u) + '" data-champ="pilote" value="' + esc(e.pilote || '') + '" placeholder="' + esc(u) + '"></td>'
       + '<td><select data-u="' + esc(u) + '">' + optionsClasses(e.classe) + '</select></td><td class="n num">' + units[u] + '</td></tr>';
   }).join('');
@@ -547,7 +662,7 @@ function rendreInscriptions() {
     s.onchange = function () { var u = this.dataset.u; inscr[u] = inscr[u] || {}; inscr[u].classe = this.value; lsEcrire('tdl_inscr', inscr); jrn('inscription', u + ' : classe « ' + (this.value || 'Sans classe') + ' »'); toutRendre(); };
   });
   document.getElementById('listeClasses').innerHTML = classes.map(function (c, i) {
-    return '<div class="ligne"><input type="text" data-i="' + i + '" value="' + esc(c) + '"><span class="aide num">' + Object.keys(inscr).filter(function (u) { return inscr[u].classe === c; }).length + ' voiture(s)</span></div>';
+    return '<div class="ligne"><input type="text" data-i="' + i + '" value="' + esc(c) + '"><span class="aide num">' + Object.keys(inscr).filter(function (u) { return inscr[u].classe === c; }).length + t('voitures') + '</span></div>';
   }).join('');
   document.querySelectorAll('#listeClasses input').forEach(function (inp) {
     inp.onchange = function () {
@@ -560,7 +675,7 @@ function rendreInscriptions() {
 }
 function rendreFiltreClasse() {
   var s = document.getElementById('fClasse'), garde = s.value;
-  s.innerHTML = '<option value="">Toutes les classes</option>' + classes.map(function (c) { return '<option' + (c === garde ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
+  s.innerHTML = '<option value="">' + t('toutesClasses') + '</option>' + classes.map(function (c) { return '<option' + (c === garde ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('');
 }
 function rendreJournal() {
   var el = document.getElementById('journal');
@@ -613,24 +728,25 @@ window.addEventListener('online', function () { jrn('meteo', 'réseau revenu : m
 function majEtatMeteo() {
   var avec = runs.filter(function (r) { return r.meteo; }).length, att = runs.filter(function (r) { return !r.meteo; }).length;
   var el = document.getElementById('etatMeteo');
-  if (el) el.textContent = avec + ' run(s) avec la météo, ' + att + ' sans' + (navigator.onLine ? '' : ' (pas de réseau)') + (lieu ? '. Lieu : position de la tablette.' : '. Lieu : pas encore connu.');
+  if (el) el.textContent = t('meteoEtat', { a: avec, b: att }) + (navigator.onLine ? '' : t('pasReseau')) + (lieu ? t('lieuTablette') : t('lieuInconnu'));
 }
 function rendreUnites() {
-  document.querySelectorAll('#v-unites .seg').forEach(function (s) {
+  document.querySelectorAll('#v-reglages .seg[data-u]').forEach(function (s) {
     s.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', U[s.dataset.u] === b.dataset.v); });
   });
-  document.querySelectorAll('[data-lab]').forEach(function (e) { var D = +e.dataset.lab; e.textContent = (e.tagName === 'TH' && D >= 660 && U.dist !== 'm') ? (D === 660 ? '1/8' : '1/4') : lab(D); });
-  document.querySelectorAll('[data-uv]').forEach(function (e) { e.textContent = 'Vitesse (' + uV() + ')'; });
+  document.querySelectorAll('[data-lab]').forEach(function (e) { var D = +e.dataset.lab; e.textContent = e.tagName === 'TH' ? court(D) : lab(D); });
+  // « V 1/8 (km/h) » : la vitesse a ce jalon, dans l'unite choisie
+  document.querySelectorAll('[data-uvd]').forEach(function (e) { e.textContent = 'V ' + court(+e.dataset.uvd) + ' (' + uV() + ')'; });
   majEtatMeteo();
 }
-function toutRendre(anim) { rendreUnites(); rendreFiltreClasse(); rendreDernier(anim); rendreClassement(); rendreRecents(); rendreListe(); rendreDetail(); rendreInscriptions(); if (vue === 'exporter') rendreJournal(); majEtat(); }
+function toutRendre(anim) { appliquerReglages(); rendreUnites(); rendreFiltreClasse(); rendreDernier(anim); rendreClassement(); rendreRecents(); rendreListe(); rendreDetail(); rendreInscriptions(); if (vue === 'exporter') rendreJournal(); majEtat(); }
 function majEtat() {
   var on = etatCx === 'on';
-  document.getElementById('etatE3B4').textContent = on ? 'E3B4 · SD ok · ' + carteSD.length + ' runs sur la carte' : (etatCx === 'cx' ? 'E3B4 · connexion…' : 'E3B4 · non connectée');
+  document.getElementById('etatE3B4').textContent = on ? t('e3b4On', { n: carteSD.length }) : (etatCx === 'cx' ? t('e3b4Cx') : t('e3b4Off'));
   document.getElementById('pointE3B4').classList.toggle('off', !on);
   var b = document.getElementById('btnCx');
   b.classList.toggle('cx-off', etatCx === 'off'); b.classList.toggle('cx-on', on); b.classList.toggle('cx-cx', etatCx === 'cx');
-  document.getElementById('btnCxTxt').textContent = on ? 'Connecté' : (etatCx === 'cx' ? 'Connexion…' : 'Connecter');
+  document.getElementById('btnCxTxt').textContent = on ? t('bConnecte') : (etatCx === 'cx' ? t('bConnexion') : t('bConnecter'));
   document.getElementById('bandeau').classList.toggle('vu', etatCx === 'off');
 }
 
@@ -646,7 +762,7 @@ function telecharger(nom, contenu, type) {
 }
 function csvCellule(v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 var EXPORTS = {
-  json: function () { return ['draglogics_sauvegarde_' + horodateFichier() + '.json', JSON.stringify({ format: 'draglogics-tableau', version: 'maquette-2', date: new Date().toISOString(), evenement: document.getElementById('evt').value, inscriptions: inscr, classes: classes, parRun: parRun, unites: U, lieu: lieu, runs: runs.map(function (r) { return { id: r.id, board: r.board, recuMs: r.recuMs, texte: r.texte, meteo: r.meteo || null }; }), journal: journal }), 'application/json']; },
+  json: function () { return ['draglogics_sauvegarde_' + horodateFichier() + '.json', JSON.stringify({ format: 'draglogics-tableau', version: 'maquette-4', date: new Date().toISOString(), evenement: document.getElementById('evt').value, inscriptions: inscr, classes: classes, parRun: parRun, unites: U, reglages: R, lieu: lieu, runs: runs.map(function (r) { return { id: r.id, board: r.board, recuMs: r.recuMs, texte: r.texte, meteo: r.meteo || null }; }), journal: journal }), 'application/json']; },
   journal: function () { return ['draglogics_journal_' + horodateFichier() + '.csv', 'heure_iso;type;message\n' + journal.map(function (j) { return [j.t, j.type, j.msg].map(csvCellule).join(';'); }).join('\n'), 'text/csv']; },
   resultats: function () {
     var uv = U.vit === 'mph' ? 'mph' : 'kmh', ut = U.temp === 'F' ? 'f' : 'c', um = U.dist === 'm';
@@ -663,14 +779,19 @@ var EXPORTS = {
 function exporter(cles) {
   var faits = [], i = 0;
   (function suivant() {
-    if (i >= cles.length) { document.getElementById('bilanExport').textContent = 'Export : ' + faits.length + ' fichier(s) sur ' + cles.length + '.'; return; }
+    if (i >= cles.length) { document.getElementById('bilanExport').textContent = t('bilanExport', { a: faits.length, b: cles.length }); return; }
     var x = EXPORTS[cles[i++]](); telecharger(x[0], x[1], x[2]); faits.push(x[0]);
     setTimeout(suivant, 700);
   })();
 }
-document.querySelectorAll('#v-unites .seg').forEach(function (s) {
+document.querySelectorAll('#v-reglages .seg[data-u]').forEach(function (s) {
   s.querySelectorAll('button').forEach(function (b) {
     b.onclick = function () { U[s.dataset.u] = b.dataset.v; lsEcrire('tdl_unites', U); jrn('unites', s.dataset.u + ' : ' + b.textContent); toutRendre(); };
+  });
+});
+document.querySelectorAll('#v-reglages .seg[data-r]').forEach(function (s) {
+  s.querySelectorAll('button').forEach(function (b) {
+    b.onclick = function () { R[s.dataset.r] = b.dataset.v; lsEcrire('tdl_reglages', R); jrn('reglages', s.dataset.r + ' : ' + b.dataset.v); toutRendre(); };
   });
 });
 document.getElementById('xTout').onclick = function () { exporter(['json', 'journal', 'resultats', 'bruts']); };
@@ -685,15 +806,12 @@ document.getElementById('xBruts').onclick = function () { exporter(['bruts']); }
 function montrer(v) {
   vue = v;
   document.querySelectorAll('#barbas [data-vue]').forEach(function (b) { b.classList.toggle('actif', b.dataset.vue === v); });
-  ['tableau', 'passages', 'inscriptions', 'unites', 'exporter'].forEach(function (x) { document.getElementById('v-' + x).hidden = x !== v; });
+  ['tableau', 'passages', 'inscriptions', 'reglages', 'exporter'].forEach(function (x) { document.getElementById('v-' + x).hidden = x !== v; });
   document.getElementById('outils').style.display = (v === 'tableau' || v === 'passages') ? '' : 'none';
   if (v === 'exporter') rendreJournal();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('#barbas [data-vue]').forEach(function (b) { b.onclick = function () { montrer(b.dataset.vue); }; });
-document.querySelectorAll('#segDist button').forEach(function (b) {
-  b.onclick = function () { dist = +b.dataset.d; document.querySelectorAll('#segDist button').forEach(function (x) { x.classList.toggle('on', x === b); }); toutRendre(); };
-});
 document.getElementById('fClasse').onchange = function () { choisi = null; toutRendre(); };
 document.addEventListener('click', function (ev) {
   var t = ev.target.closest('[data-id]'); if (!t || !t.dataset.id) return;
@@ -744,7 +862,7 @@ document.getElementById('btnAjout').onclick = nouveauPassage;
 setInterval(function () { if (document.getElementById('auto').checked) nouveauPassage(); }, 20000);
 setInterval(function () { var d = new Date(); document.getElementById('horloge').textContent = hms(d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()); }, 1000);
 
-jrn('page', 'page ouverte (maquette 3)');
+jrn('page', 'page ouverte (maquette 4)');
 // DEMO : le matin, 12 runs sont deja sur la carte SD. La page, elle, part vide : ils arrivent a la connexion.
 // le premier run est la COURSE SIMULEE DU KIT (mot `sim`) : ses temps doivent etre ceux du bus CAN
 carteSD.push({ texte: fabriquerRun(VOITURES[0]), board: VOITURES[0].unit });
