@@ -130,7 +130,7 @@
 <div class="outils" id="outils">
   <select id="fClasse" aria-label="Classe"><option value="">Toutes les classes</option></select>
   <div class="seg" id="segDist" role="group" aria-label="Distance du classement">
-    <button data-d="660">1/8 mi</button><button data-d="1320" class="on">1/4 mi</button>
+    <button data-d="660" data-lab="660">1/8 mi</button><button data-d="1320" data-lab="1320" class="on">1/4 mi</button>
   </div>
 </div>
 <main>
@@ -138,7 +138,7 @@
   <section id="v-tableau">
     <div class="grille tableau">
       <div class="card dernier" id="carteDernier"></div>
-      <div class="card"><h2 id="titreClassement">Classement</h2><div class="defile"><table class="tableau-classement"><thead><tr><th>#</th><th>Pilote</th><th class="n">Meilleur</th><th class="n">Vitesse</th><th class="n">60 pi</th><th class="n">Écart</th><th class="n">Runs</th></tr></thead><tbody id="classement"></tbody></table></div></div>
+      <div class="card"><h2 id="titreClassement">Classement</h2><div class="defile"><table class="tableau-classement"><thead><tr><th>#</th><th>Pilote</th><th class="n">Meilleur</th><th class="n" data-uv="1">Vitesse</th><th class="n" data-lab="60">60 pi</th><th class="n">Écart</th><th class="n">Runs</th></tr></thead><tbody id="classement"></tbody></table></div></div>
       <div class="card recents"><h2>Passages récents</h2><div id="recents"></div></div>
       <div class="card"><h2>Démo</h2>
         <p class="aide">La maquette ajoute un passage de démonstration toutes les 20 s, comme si la E3B4 en recevait un.</p>
@@ -156,7 +156,7 @@
           <select id="fPilote"><option value="">Tous les pilotes</option></select>
           <select id="fStatut"><option value="">Tous</option><option value="TERMINE">Terminés</option><option value="ABANDON">Abandons</option></select>
         </div>
-        <div class="defile"><table><thead><tr><th>Heure</th><th>Pilote</th><th class="n">60 pi</th><th class="n">330 pi</th><th class="n">1/8</th><th class="n">1/4</th><th class="n">Vitesse</th></tr></thead><tbody id="liste"></tbody></table></div>
+        <div class="defile"><table><thead><tr><th>Heure</th><th>Pilote</th><th class="n" data-lab="60">60 pi</th><th class="n" data-lab="330">330 pi</th><th class="n" data-lab="660">1/8</th><th class="n" data-lab="1320">1/4</th><th class="n" data-uv="1">Vitesse</th></tr></thead><tbody id="liste"></tbody></table></div>
       </div>
       <div class="card" id="detail"></div>
     </div>
@@ -174,6 +174,25 @@
         <div id="listeClasses"></div>
         <div class="ligne"><input type="text" id="nouvelleClasse" placeholder="Nouvelle classe (ex. Street, Modifiée)"><button class="bouton plein" id="ajoutClasse">Ajouter</button></div>
         <p class="aide">Une classe vidée de son nom est retirée ; ses voitures passent en « Sans classe ».</p>
+      </div>
+    </div>
+  </section>
+  <!-- ============ UNITES ============ -->
+  <section id="v-unites" hidden>
+    <div class="grille deux">
+      <div class="card">
+        <h2>Unités</h2>
+        <p class="aide">Les runs restent enregistrés tels que le kit les envoie (km/h, pieds). Le choix ne change que l’affichage et les exports.</p>
+        <table><tbody>
+          <tr><td>Température</td><td><div class="seg" data-u="temp"><button data-v="C">°C</button><button data-v="F">°F</button></div></td></tr>
+          <tr><td>Vitesse</td><td><div class="seg" data-u="vit"><button data-v="kmh">km/h</button><button data-v="mph">mph</button></div></td></tr>
+          <tr><td>Distance</td><td><div class="seg" data-u="dist"><button data-v="pi">Pieds</button><button data-v="m">Mètres</button></div></td></tr>
+        </tbody></table>
+      </div>
+      <div class="card">
+        <h2>Météo</h2>
+        <p class="aide">Quand Internet est disponible, la page note la météo au lieu de la course dans chaque run (température, humidité, pression, vent). Elle ne l’affiche pas : elle part dans les exports.</p>
+        <p class="aide" id="etatMeteo"></p>
       </div>
     </div>
   </section>
@@ -202,6 +221,7 @@
   <button data-vue="tableau" class="actif"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/></svg>Tableau</button>
   <button data-vue="passages"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Passages</button>
   <button data-vue="inscriptions"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.6 5.5-4.6s4.7 1.6 5.5 4.6"/><path d="M16 7h5M16 11h5M18.5 4.5v9"/></svg>Inscriptions</button>
+  <button data-vue="unites"><svg viewBox="0 0 24 24"><path d="M3 17h18M5 17v-3M9 17v-5M13 17v-3M17 17v-5"/><path d="M3 7h10M16 7h5"/><circle cx="14.5" cy="7" r="1.8"/></svg>Unités</button>
   <button data-vue="exporter"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M4 17v2.5h16V17"/></svg>Exporter</button>
 </div>
 
@@ -378,13 +398,19 @@ function ajouterTexte(txt, board) {
   r.board = board || r.unit; r.id = r.board + '_' + r.seq; r.texte = txt; r.recuMs = Date.now();
   if (runs.some(function (x) { return x.id === r.id; })) { jrn('run', 'run ' + r.id + ' déjà dans la base : ignoré'); return null; }
   runs.push(r);
+  meteoPour(r);
   jrn('run', 'run ' + r.id + ' reçu : ' + piloteDe(r) + ', ' + r.statut + ', 1/4 ' + s3(r.t1320) + ' s, ' + r.ech.length + ' échantillons');
   if (!r.unit || !r.seq) jrn('erreur', 'run ' + r.id + ' : en-tête incomplet (unit ou numéro manquant)');
   return r;
 }
 function vD(r, d) { return d === 660 ? r.v660 : r.v1320; }
 function s3(ms) { return ms ? (ms / 1000).toFixed(3) : '—'; }
-function k1(v) { return v ? v.toFixed(1) : '—'; }
+// [unites] les runs restent en km/h et en pieds (tels que le kit les envoie) : on ne convertit qu'a l'affichage et a l'export
+var U = lsLire('tdl_unites', { temp: 'C', vit: 'kmh', dist: 'pi' });
+function k1(v) { return v ? (U.vit === 'mph' ? v * 0.621371 : v).toFixed(1) : '—'; }
+function uV() { return U.vit === 'mph' ? 'mph' : 'km/h'; }
+function lab(D) { return (U.dist === 'm' ? { 60: '18 m', 330: '101 m', 660: '201 m', 1320: '402 m' } : { 60: '60 pi', 330: '330 pi', 660: '1/8 mi', 1320: '1/4 mi' })[D]; }
+function tC(c) { return c == null ? '' : (U.temp === 'F' ? c * 9 / 5 + 32 : c).toFixed(1); }
 function ecartTxt(ms) { return (ms > 0 ? '+' : '') + (ms / 1000).toFixed(3); }
 function meilleurDe(pil, cle, sauf) {
   var b = null;
@@ -401,17 +427,17 @@ function rendreDernier(anim) {
   if (!runs.length) { el.innerHTML = '<h2>Dernier passage</h2><div class="vide">En attente du premier run…</div>'; return; }
   var r = runs[runs.length - 1], pil = piloteDe(r), cle = 't' + dist;
   var avant = meilleurDe(pil, cle, r), pb = r[cle] && (avant == null || r[cle] < avant);
-  var tuiles = [['60 pi', 't60', null], ['330 pi', 't330', 'v330'], ['1/8 mi', 't660', 'v660'], ['1/4 mi', 't1320', 'v1320']].map(function (x) {
+  var tuiles = [[lab(60), 't60', null], [lab(330), 't330', 'v330'], [lab(660), 't660', 'v660'], [lab(1320), 't1320', 'v1320']].map(function (x) {
     var b = meilleurDe(pil, x[1], r), e = (r[x[1]] && b != null) ? r[x[1]] - b : null;
     return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(r[x[1]]) + '</div>'
-      + (x[2] ? '<div class="vit num">' + k1(r[x[2]]) + ' km/h</div>' : '<div class="vit">&nbsp;</div>')
+      + (x[2] ? '<div class="vit num">' + k1(r[x[2]]) + ' ' + uV() + '</div>' : '<div class="vit">&nbsp;</div>')
       + '<div class="ecart num ' + (e == null ? '' : e > 0 ? 'plus' : 'moins') + '">' + (e == null ? '&nbsp;' : ecartTxt(e) + ' vs meilleur') + '</div></div>';
   }).join('');
   el.innerHTML = '<h2>Dernier passage · ' + r.heure + '</h2>'
     + '<div class="qui"><span class="pilote">' + plaque(r.unit) + esc(pil) + '</span><span class="voiture">' + esc(voitureDe(r.unit)) + ' · run #' + r.seq + '</span>'
     + '<span class="badge cl">' + esc(classeDe(r)) + '</span>'
     + (pb ? '<span class="badge pb">Meilleur perso</span>' : '') + (r.statut !== 'TERMINE' ? '<span class="badge att">' + esc(r.statut) + '</span>' : '') + '</div>'
-    + '<div class="et num">' + s3(r[cle]) + '<small>' + (dist === 660 ? '1/8 mi' : '1/4 mi') + ' · ' + k1(vD(r, dist)) + ' km/h</small></div>'
+    + '<div class="et num">' + s3(r[cle]) + '<small>' + lab(dist) + ' · ' + k1(vD(r, dist)) + ' ' + uV() + '</small></div>'
     + '<div class="partiels">' + tuiles + '</div>';
   if (anim) { el.classList.remove('arrive'); void el.offsetWidth; el.classList.add('arrive'); }
 }
@@ -426,7 +452,7 @@ function rendreClassement() {
   });
   var L = Object.keys(par).map(function (k) { return par[k]; }).sort(function (a, b) { return (a.best || 1e9) - (b.best || 1e9); });
   var tete = L.length && L[0].best;
-  document.getElementById('titreClassement').textContent = 'Classement · ' + (fc || 'toutes les classes') + ' · ' + (dist === 660 ? '1/8 mi' : '1/4 mi');
+  document.getElementById('titreClassement').textContent = 'Classement · ' + (fc || 'toutes les classes') + ' · ' + lab(dist);
   document.getElementById('classement').innerHTML = L.length ? L.map(function (e, i) {
     return '<tr class="clic" data-id="' + (e.run ? e.run.id : '') + '"><td class="rang">' + (e.best ? i + 1 : '—') + '</td><td>' + plaque(e.unit) + '<b>' + esc(e.pil) + '</b><br><span class="aide">' + esc(voitureDe(e.unit)) + (fc ? '' : ' · ' + esc(e.cl)) + '</span></td>'
       + '<td class="n num"><b>' + s3(e.best) + '</b></td><td class="n num">' + k1(e.run ? vD(e.run, dist) : 0) + '</td><td class="n num">' + s3(e.b60) + '</td>'
@@ -436,7 +462,7 @@ function rendreClassement() {
 function rendreRecents() {
   var L = runs.slice(-6).reverse();
   document.getElementById('recents').innerHTML = L.length ? L.map(function (r) {
-    return '<div class="ligne" data-id="' + r.id + '"><span class="h num">' + r.heure.slice(0, 5) + '</span><span class="p">' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</span><span class="t num">' + s3(r['t' + dist]) + '</span><span class="aide num">' + k1(vD(r, dist)) + ' km/h</span></div>';
+    return '<div class="ligne" data-id="' + r.id + '"><span class="h num">' + r.heure.slice(0, 5) + '</span><span class="p">' + plaque(r.unit) + esc(piloteDe(r)) + (r.statut !== 'TERMINE' ? ' <span class="badge att">abandon</span>' : '') + '</span><span class="t num">' + s3(r['t' + dist]) + '</span><span class="aide num">' + k1(vD(r, dist)) + ' ' + uV() + '</span></div>';
   }).join('') : '<div class="vide">—</div>';
 }
 function listeFiltree() {
@@ -456,7 +482,8 @@ function rendreListe() {
 function courbe(r) {
   // l'axe du temps est celui des lignes R (depuis le declenchement) ; un jalon s'y place a T0 + t
   var t0 = r.t0 || 0, fin = r.t1320 ? t0 + r.t1320 + 1500 : Infinity;
-  var e = r.ech.filter(function (x) { return x.t >= 0 && x.t <= fin; }); if (e.length < 2) return '<p class="aide">Pas d\'échantillons dans ce run.</p>';
+  var fk = U.vit === 'mph' ? 0.621371 : 1;
+  var e = r.ech.filter(function (x) { return x.t >= 0 && x.t <= fin; }).map(function (x) { return { t: x.t, v: x.v * fk, d: x.d }; }); if (e.length < 2) return '<p class="aide">Pas d\'échantillons dans ce run.</p>';
   var W = 600, H = 190, g = 34, tmax = e[e.length - 1].t, vmax = 0; e.forEach(function (x) { if (x.v > vmax) vmax = x.v; });
   vmax = Math.ceil(vmax / 20) * 20 || 20;
   var X = function (t) { return g + (W - g - 8) * t / tmax; }, Y = function (v) { return H - 18 - (H - 28) * v / vmax; };
@@ -464,10 +491,10 @@ function courbe(r) {
   for (var v = 0; v <= vmax; v += 40) grille += '<line x1="' + g + '" x2="' + (W - 8) + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="var(--line)"/><text x="2" y="' + (Y(v) + 3) + '">' + v + '</text>';
   var jal = [[60, r.t60], [330, r.t330], [660, r.t660], [1320, r.t1320]].filter(function (x) { return x[1]; }).map(function (x) {
     var xp = X(t0 + x[1]);
-    return '<line x1="' + xp + '" x2="' + xp + '" y1="8" y2="' + (H - 18) + '" stroke="var(--sel)" stroke-dasharray="3 3"/><text x="' + (xp + 3) + '" y="16">' + (x[0] === 660 ? '1/8' : x[0] === 1320 ? '1/4' : x[0]) + '</text>';
+    return '<line x1="' + xp + '" x2="' + xp + '" y1="8" y2="' + (H - 18) + '" stroke="var(--sel)" stroke-dasharray="3 3"/><text x="' + (xp + 3) + '" y="16">' + lab(x[0]) + '</text>';
   }).join('');
   return '<svg class="courbe" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + grille + jal + '<path d="' + p + '" fill="none" stroke="var(--ink)" stroke-width="2"/>'
-    + '<text x="' + (W - 60) + '" y="' + (H - 4) + '">temps (s) →</text><text x="' + g + '" y="' + (H - 4) + '">km/h</text></svg>';
+    + '<text x="' + (W - 60) + '" y="' + (H - 4) + '">temps (s) →</text><text x="' + g + '" y="' + (H - 4) + '">' + uV() + '</text></svg>';
 }
 function rendreDetail() {
   var el = document.getElementById('detail'), L = listeFiltree();
@@ -477,8 +504,8 @@ function rendreDetail() {
   Object.keys(inscr).forEach(function (u) { if (inscr[u].pilote) noms[inscr[u].pilote] = 1; }); runs.forEach(function (x) { noms[piloteDe(x)] = 1; });
   el.innerHTML = '<div class="nav-run"><button class="bouton" id="prec"' + (i >= L.length - 1 ? ' disabled' : '') + '>◀ Précédent</button><span class="pos num">' + (L.length - i) + ' / ' + L.length + '</span><button class="bouton" id="suiv"' + (i <= 0 ? ' disabled' : '') + '>Suivant ▶</button></div>'
     + '<h2>' + (numDe(r.unit) ? 'N° ' + esc(numDe(r.unit)) + ' · ' : '') + esc(piloteDe(r)) + ' · ' + esc(voitureDe(r.unit)) + ' · ' + esc(classeDe(r)) + ' · run #' + r.seq + ' · ' + r.heure + '</h2>'
-    + '<div class="partiels">' + [['60 pi', r.t60, 0], ['330 pi', r.t330, r.v330], ['1/8 mi', r.t660, r.v660], ['1/4 mi', r.t1320, r.v1320]].map(function (x) {
-        return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(x[1]) + '</div><div class="vit num">' + (x[2] ? k1(x[2]) + ' km/h' : '&nbsp;') + '</div></div>'; }).join('') + '</div>'
+    + '<div class="partiels">' + [[lab(60), r.t60, 0], [lab(330), r.t330, r.v330], [lab(660), r.t660, r.v660], [lab(1320), r.t1320, r.v1320]].map(function (x) {
+        return '<div class="tuile"><div class="lab">' + x[0] + '</div><div class="val num">' + s3(x[1]) + '</div><div class="vit num">' + (x[2] ? k1(x[2]) + ' ' + uV() : '&nbsp;') + '</div></div>'; }).join('') + '</div>'
     + '<div style="margin-top:12px">' + courbe(r) + '</div>'
     + '<p style="margin:10px 0 0">Pilote de ce run : <select id="pilRun"><option value="">' + esc(defaut) + ' (inscrit)</option>'
     + Object.keys(noms).sort().filter(function (n) { return n !== defaut; }).map(function (n) { return '<option' + (parRun[r.id] === n ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('')
@@ -541,7 +568,62 @@ function rendreJournal() {
     return '<div' + (j.type === 'erreur' ? ' class="j-att"' : '') + '>' + j.t.slice(11, 19) + ' · ' + esc(j.type) + ' · ' + esc(j.msg) + '</div>';
   }).join('') || '<div class="aide">Vide</div>';
 }
-function toutRendre(anim) { rendreFiltreClasse(); rendreDernier(anim); rendreClassement(); rendreRecents(); rendreListe(); rendreDetail(); rendreInscriptions(); if (vue === 'exporter') rendreJournal(); majEtat(); }
+// ===================================================================
+// LA METEO -- consignee dans chaque run, JAMAIS affichee (demande du pilote, 30 sept. 2026).
+// Open-Meteo (sans cle), a l'heure du run, au lieu donne par la position de la tablette.
+// ⚠ L'heure du run est l'heure LOCALE du kit (reglage tzh du kit) : si ce reglage est faux,
+// la meteo est prise a la mauvaise heure. Sans reseau, le run attend et la page reessaie au retour
+// du reseau. Aucune meteo inventee : un echec est note au journal, le run reste sans meteo.
+// ===================================================================
+var lieu = lsLire('tdl_lieu', null), meteoCache = {};
+function obtenirLieu(cb) {
+  if (lieu && Date.now() - lieu.ms < 6 * 3600e3) return cb(lieu);
+  if (!navigator.geolocation) { jrn('erreur', 'météo : pas de géolocalisation sur cet appareil'); return cb(null); }
+  navigator.geolocation.getCurrentPosition(function (p) {
+    lieu = { lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4), source: 'tablette', ms: Date.now() };
+    lsEcrire('tdl_lieu', lieu); jrn('meteo', 'lieu de la météo : position de la tablette'); cb(lieu);
+  }, function (e) { jrn('erreur', 'météo : position refusée ou indisponible (' + e.message + ')'); cb(null); }, { timeout: 10000, maximumAge: 3600e3 });
+}
+function dateLocale(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function meteoPour(r) {
+  if (r.meteo || r.meteoEnCours) return;
+  if (!navigator.onLine) { r.meteoAttente = true; majEtatMeteo(); return; }
+  r.meteoEnCours = true;
+  obtenirLieu(function (L) {
+    if (!L) { r.meteoEnCours = false; r.meteoAttente = true; majEtatMeteo(); return; }
+    var jour = dateLocale(new Date(r.recuMs)), cle = L.lat + ',' + L.lon + ',' + jour;
+    var p = meteoCache[cle] || (meteoCache[cle] = fetch('https://api.open-meteo.com/v1/forecast?latitude=' + L.lat + '&longitude=' + L.lon
+      + '&hourly=temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m&past_days=1&forecast_days=1&timezone=auto')
+      .then(function (x) { if (!x.ok) throw new Error('HTTP ' + x.status); return x.json(); }));
+    p.then(function (j) {
+      var h = j.hourly, cible = jour + 'T' + r.heure.slice(0, 2) + ':00', i = h.time.indexOf(cible);
+      if (i < 0) throw new Error('heure ' + cible + ' absente de la réponse');
+      var f = (+r.heure.slice(3, 5) * 60 + +r.heure.slice(6, 8)) / 3600, k = Math.min(i + 1, h.time.length - 1);
+      var val = function (a) { return a[i] + (a[k] - a[i]) * f; };
+      var tc = val(h.temperature_2m), hpa = val(h.surface_pressure);
+      // altitude-densite approchee (air sec) : l'indicateur de la piste de drag
+      var pa = (1 - Math.pow(hpa / 1013.25, 0.190284)) * 145366.45, da = pa + 118.8 * (tc - (15 - 1.98 * pa / 1000));
+      r.meteo = { t_c: +tc.toFixed(1), hr_pct: Math.round(val(h.relative_humidity_2m)), p_hpa: +hpa.toFixed(1), vent_kmh: +val(h.wind_speed_10m).toFixed(1),
+                  vent_dir: Math.round(h.wind_direction_10m[i]), da_pi: Math.round(da), heure: cible, lat: L.lat, lon: L.lon, source: 'open-meteo', lue: new Date().toISOString() };
+      r.meteoEnCours = false; r.meteoAttente = false; jrn('meteo', 'run ' + r.id + ' : météo consignée (' + cible + ')'); majEtatMeteo();
+    }).catch(function (e) { delete meteoCache[cle]; r.meteoEnCours = false; r.meteoAttente = true; jrn('erreur', 'météo non obtenue pour ' + r.id + ' : ' + e.message); majEtatMeteo(); });
+  });
+}
+window.addEventListener('online', function () { jrn('meteo', 'réseau revenu : météo des runs en attente'); runs.forEach(function (r) { if (r.meteoAttente) { r.meteoAttente = false; meteoPour(r); } }); });
+function majEtatMeteo() {
+  var avec = runs.filter(function (r) { return r.meteo; }).length, att = runs.filter(function (r) { return !r.meteo; }).length;
+  var el = document.getElementById('etatMeteo');
+  if (el) el.textContent = avec + ' run(s) avec la météo, ' + att + ' sans' + (navigator.onLine ? '' : ' (pas de réseau)') + (lieu ? '. Lieu : position de la tablette.' : '. Lieu : pas encore connu.');
+}
+function rendreUnites() {
+  document.querySelectorAll('#v-unites .seg').forEach(function (s) {
+    s.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', U[s.dataset.u] === b.dataset.v); });
+  });
+  document.querySelectorAll('[data-lab]').forEach(function (e) { var D = +e.dataset.lab; e.textContent = (e.tagName === 'TH' && D >= 660 && U.dist !== 'm') ? (D === 660 ? '1/8' : '1/4') : lab(D); });
+  document.querySelectorAll('[data-uv]').forEach(function (e) { e.textContent = 'Vitesse (' + uV() + ')'; });
+  majEtatMeteo();
+}
+function toutRendre(anim) { rendreUnites(); rendreFiltreClasse(); rendreDernier(anim); rendreClassement(); rendreRecents(); rendreListe(); rendreDetail(); rendreInscriptions(); if (vue === 'exporter') rendreJournal(); majEtat(); }
 function majEtat() {
   var on = etatCx === 'on';
   document.getElementById('etatE3B4').textContent = on ? 'E3B4 · SD ok · ' + carteSD.length + ' runs sur la carte' : (etatCx === 'cx' ? 'E3B4 · connexion…' : 'E3B4 · non connectée');
@@ -564,11 +646,15 @@ function telecharger(nom, contenu, type) {
 }
 function csvCellule(v) { v = String(v == null ? '' : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 var EXPORTS = {
-  json: function () { return ['draglogics_sauvegarde_' + horodateFichier() + '.json', JSON.stringify({ format: 'draglogics-tableau', version: 'maquette-2', date: new Date().toISOString(), evenement: document.getElementById('evt').value, inscriptions: inscr, classes: classes, parRun: parRun, runs: runs.map(function (r) { return { id: r.id, board: r.board, recuMs: r.recuMs, texte: r.texte }; }), journal: journal }), 'application/json']; },
+  json: function () { return ['draglogics_sauvegarde_' + horodateFichier() + '.json', JSON.stringify({ format: 'draglogics-tableau', version: 'maquette-2', date: new Date().toISOString(), evenement: document.getElementById('evt').value, inscriptions: inscr, classes: classes, parRun: parRun, unites: U, lieu: lieu, runs: runs.map(function (r) { return { id: r.id, board: r.board, recuMs: r.recuMs, texte: r.texte, meteo: r.meteo || null }; }), journal: journal }), 'application/json']; },
   journal: function () { return ['draglogics_journal_' + horodateFichier() + '.csv', 'heure_iso;type;message\n' + journal.map(function (j) { return [j.t, j.type, j.msg].map(csvCellule).join(';'); }).join('\n'), 'text/csv']; },
   resultats: function () {
-    var t = 'heure;numero;pilote;classe;voiture;run;statut;t60_s;t330_s;t660_s;v660_kmh;t1320_s;v1320_kmh\n' + runs.map(function (r) {
-      return [r.heure, numDe(r.unit), piloteDe(r), classeDe(r), r.unit, r.seq, r.statut, s3(r.t60), s3(r.t330), s3(r.t660), k1(r.v660), s3(r.t1320), k1(r.v1320)].map(csvCellule).join(';');
+    var uv = U.vit === 'mph' ? 'mph' : 'kmh', ut = U.temp === 'F' ? 'f' : 'c', um = U.dist === 'm';
+    var t = 'heure;numero;pilote;classe;voiture;run;statut;t60_s;t330_s;t660_s;v660_' + uv + ';t1320_s;v1320_' + uv
+      + ';meteo_temp_' + ut + ';meteo_humidite_pct;meteo_pression_hpa;meteo_vent_' + uv + ';meteo_vent_dir_deg;meteo_densite_alt_' + (um ? 'm' : 'pi') + ';meteo_heure\n' + runs.map(function (r) {
+      var m = r.meteo || {};
+      return [r.heure, numDe(r.unit), piloteDe(r), classeDe(r), r.unit, r.seq, r.statut, s3(r.t60), s3(r.t330), s3(r.t660), k1(r.v660), s3(r.t1320), k1(r.v1320),
+              tC(m.t_c), m.hr_pct, m.p_hpa, m.vent_kmh != null ? k1(m.vent_kmh) : '', m.vent_dir, m.da_pi != null ? (um ? Math.round(m.da_pi * 0.3048) : m.da_pi) : '', m.heure || ''].map(csvCellule).join(';');
     }).join('\n');
     return ['draglogics_resultats_' + horodateFichier() + '.csv', t, 'text/csv'];
   },
@@ -582,6 +668,11 @@ function exporter(cles) {
     setTimeout(suivant, 700);
   })();
 }
+document.querySelectorAll('#v-unites .seg').forEach(function (s) {
+  s.querySelectorAll('button').forEach(function (b) {
+    b.onclick = function () { U[s.dataset.u] = b.dataset.v; lsEcrire('tdl_unites', U); jrn('unites', s.dataset.u + ' : ' + b.textContent); toutRendre(); };
+  });
+});
 document.getElementById('xTout').onclick = function () { exporter(['json', 'journal', 'resultats', 'bruts']); };
 document.getElementById('xJson').onclick = function () { exporter(['json']); };
 document.getElementById('xJournal').onclick = function () { exporter(['journal']); };
@@ -594,7 +685,7 @@ document.getElementById('xBruts').onclick = function () { exporter(['bruts']); }
 function montrer(v) {
   vue = v;
   document.querySelectorAll('#barbas [data-vue]').forEach(function (b) { b.classList.toggle('actif', b.dataset.vue === v); });
-  ['tableau', 'passages', 'inscriptions', 'exporter'].forEach(function (x) { document.getElementById('v-' + x).hidden = x !== v; });
+  ['tableau', 'passages', 'inscriptions', 'unites', 'exporter'].forEach(function (x) { document.getElementById('v-' + x).hidden = x !== v; });
   document.getElementById('outils').style.display = (v === 'tableau' || v === 'passages') ? '' : 'none';
   if (v === 'exporter') rendreJournal();
   window.scrollTo(0, 0);
