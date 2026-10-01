@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Essai OTG E3B4</title>
+<!-- Essai du 1er oct. 2026 : la tablette lit-elle la E3B4 (TBS_dlap) par un cable USB OTG ?
+     Hors PWA. LECTURE SEULE : seuls les mots stat / modules / sd / fichiers / hist partent vers la carte.
+     Aucun appel a setSignals : on ne touche pas aux lignes DTR/RTS (sur la S3, RTS seul = redemarrage). -->
+<style>
+:root { --fond:#f6f7f9; --carte:#ffffff; --texte:#16181d; --doux:#5b6270; --bord:#d9dde4; --ok:#1b7f3b; --non:#b42318; --att:#c25a00; --sel:#1f5fbf; --mono:#0f1115; --monotexte:#d7f5dd; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fond:#101216; --carte:#181b21; --texte:#e7e9ee; --doux:#9aa3b2; --bord:#2a2f38; --ok:#4cc276; --non:#ff6b5e; --att:#ffad5c; --sel:#6ea8ff; --mono:#0a0b0e; --monotexte:#bdf0c8; } }
+:root[data-theme="dark"] { --fond:#101216; --carte:#181b21; --texte:#e7e9ee; --doux:#9aa3b2; --bord:#2a2f38; --ok:#4cc276; --non:#ff6b5e; --att:#ffad5c; --sel:#6ea8ff; --mono:#0a0b0e; --monotexte:#bdf0c8; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--fond); color:var(--texte); font:16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width:900px; margin:0 auto; padding:16px; }
+h1 { font-size:1.35rem; margin:0 0 4px; }
+.sous { color:var(--doux); margin:0 0 16px; font-size:.95rem; }
+.carte { background:var(--carte); border:1px solid var(--bord); border-radius:12px; padding:14px; margin-bottom:14px; }
+.carte h2 { font-size:1rem; margin:0 0 10px; }
+.grille { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:8px; }
+.case { border:1px solid var(--bord); border-radius:8px; padding:8px 10px; }
+.case .n { color:var(--doux); font-size:.8rem; }
+.case .v { font-weight:600; font-size:1.05rem; word-break:break-word; }
+.oui { color:var(--ok); } .non { color:var(--non); } .att { color:var(--att); }
+button { font:inherit; padding:10px 14px; border-radius:10px; border:1px solid var(--bord); background:var(--carte); color:var(--texte); cursor:pointer; min-height:44px; }
+button.prim { background:var(--sel); color:#fff; border-color:var(--sel); }
+button:disabled { opacity:.45; cursor:default; }
+.rang { display:flex; flex-wrap:wrap; gap:8px; }
+#journal { background:var(--mono); color:var(--monotexte); font:12px/1.35 ui-monospace, Consolas, monospace; border-radius:10px; padding:10px; height:46vh; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:0; }
+.note { color:var(--doux); font-size:.85rem; margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Essai OTG E3B4</h1>
+  <p class="sous">La tablette lit-elle la E3B4 par un câble USB OTG ? Lecture seule.</p>
+
+  <section class="carte">
+    <h2>1. Ce que ce navigateur sait faire</h2>
+    <div class="grille" id="capacites"></div>
+  </section>
+
+  <section class="carte">
+    <h2>2. Ouvrir la E3B4</h2>
+    <div class="rang">
+      <button class="prim" id="btSerie">Ouvrir (Web Serial)</button>
+      <button id="btUsb">Ouvrir (WebUSB)</button>
+      <button id="btFermer" disabled>Fermer</button>
+    </div>
+    <p class="note">Branche la E3B4 à la tablette par le câble OTG, puis touche un bouton et choisis la carte « USB JTAG/serial debug unit ».</p>
+  </section>
+
+  <section class="carte">
+    <h2>3. Résultat</h2>
+    <div class="grille">
+      <div class="case"><div class="n">Lien</div><div class="v" id="vLien">fermé</div></div>
+      <div class="case"><div class="n">Lignes reçues</div><div class="v" id="vLignes">0</div></div>
+      <div class="case"><div class="n">Octets reçus</div><div class="v" id="vOctets">0</div></div>
+      <div class="case"><div class="n">Redémarrage à l’ouverture</div><div class="v" id="vBoot">—</div></div>
+      <div class="case"><div class="n">Firmware</div><div class="v" id="vFw">—</div></div>
+      <div class="case"><div class="n">BLE de la E3B4</div><div class="v" id="vBle">—</div></div>
+      <div class="case"><div class="n">Trames ESP-NOW</div><div class="v" id="vTrames">—</div></div>
+      <div class="case"><div class="n">Runs écrits</div><div class="v" id="vRuns">—</div></div>
+    </div>
+  </section>
+
+  <section class="carte">
+    <h2>4. Mots en lecture seule</h2>
+    <div class="rang" id="mots"></div>
+  </section>
+
+  <section class="carte">
+    <h2>Journal</h2>
+    <pre id="journal"></pre>
+    <div class="rang" style="margin-top:8px"><button id="btEffacer">Vider l’écran</button></div>
+  </section>
+</main>
+<script>
+'use strict';
+const MOTS = ['stat', 'modules', 'sd', 'fichiers', 'hist'];   // ⚠ LECTURE SEULE : aucun autre mot ne part vers la carte
+const VID_ESP = 0x303A;
+const $ = id => document.getElementById(id);
+let lien = null;            // { type, ecrire(texte), fermer() }
+let lignes = 0, octets = 0, ouvertMs = 0, reste = '';
+
+function journal(t, classe) {
+  const j = $('journal'); const bas = j.scrollTop + j.clientHeight >= j.scrollHeight - 30;
+  const l = document.createElement('div'); l.textContent = t; if (classe) l.className = classe;
+  j.appendChild(l); while (j.childNodes.length > 3000) j.removeChild(j.firstChild);
+  if (bas) j.scrollTop = j.scrollHeight;
+}
+function capacite(nom, ok, detail) {
+  const c = document.createElement('div'); c.className = 'case';
+  c.innerHTML = '<div class="n"></div><div class="v"></div>';
+  c.querySelector('.n').textContent = nom;
+  const v = c.querySelector('.v'); v.textContent = detail || (ok ? 'oui' : 'non'); v.className = 'v ' + (ok ? 'oui' : 'non');
+  $('capacites').appendChild(c);
+}
+const chrome = (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1];
+capacite('Web Serial', 'serial' in navigator);
+capacite('WebUSB', 'usb' in navigator);
+capacite('Page sécurisée (https)', window.isSecureContext);
+capacite('Chrome', !!chrome, chrome ? 'version ' + chrome : 'pas Chrome');
+$('btSerie').disabled = !('serial' in navigator);
+$('btUsb').disabled = !('usb' in navigator);
+
+function etatLien(t, classe) { const v = $('vLien'); v.textContent = t; v.className = 'v ' + (classe || ''); }
+function boutons(ouvert) {
+  $('btSerie').disabled = ouvert || !('serial' in navigator);
+  $('btUsb').disabled = ouvert || !('usb' in navigator);
+  $('btFermer').disabled = !ouvert;
+  document.querySelectorAll('#mots button').forEach(b => b.disabled = !ouvert);
+}
+MOTS.forEach(m => { const b = document.createElement('button'); b.textContent = m; b.disabled = true; b.onclick = () => envoyer(m); $('mots').appendChild(b); });
+
+// ---- une ligne de la E3B4 ----
+function ligneRecue(l) {
+  lignes++; $('vLignes').textContent = lignes;
+  if (lignes === 1) etatLien('ouvert, la E3B4 parle', 'oui');
+  // une banniere de demarrage dans les 3 s : l'ouverture du port a redemarre la carte
+  if (/-- DLAP sur carte SD/.test(l) || /^ESP-ROM:|rst:0x/.test(l)) {
+    const dt = performance.now() - ouvertMs;
+    $('vBoot').textContent = dt < 3000 ? 'OUI (' + Math.round(dt) + ' ms après l’ouverture)' : 'redémarrage vu à ' + Math.round(dt / 1000) + ' s';
+    $('vBoot').className = 'v att';
+  }
+  const m = l.match(/TBS_dlap (\S+) id=\S+ now=\S+ ble=(\S+ \(\d+ client\))/);
+  if (m) { $('vFw').textContent = m[1]; $('vBle').textContent = m[2]; }
+  const t = l.match(/trames=(\d+)/); if (t) $('vTrames').textContent = t[1];
+  const r = l.match(/runs ecrits=(\d+)/); if (r) $('vRuns').textContent = r[1];
+  journal(l, /!!!/.test(l) ? 'non' : '');
+}
+function octetsRecus(texte, n) {
+  octets += n; $('vOctets').textContent = octets;
+  reste += texte;
+  let i; while ((i = reste.indexOf('\n')) >= 0) { ligneRecue(reste.slice(0, i).replace(/\r$/, '')); reste = reste.slice(i + 1); }
+  if (reste.length > 4000) { ligneRecue(reste); reste = ''; }
+}
+async function envoyer(mot) {
+  if (!lien || !MOTS.includes(mot)) return;
+  journal('> ' + mot, 'att');
+  try { await lien.ecrire(mot + '\n'); } catch (e) { journal('!!! envoi impossible : ' + e.message, 'non'); }
+}
+function ouvertOk(type) {
+  lignes = 0; octets = 0; reste = ''; ouvertMs = performance.now();
+  $('vLignes').textContent = 0; $('vOctets').textContent = 0; $('vBoot').textContent = 'non vu'; $('vBoot').className = 'v oui';
+  etatLien('ouvert (' + type + '), en attente', 'att'); boutons(true);
+  journal('--- ouvert par ' + type + ' ---', 'att');
+  setTimeout(() => { if (lien && lignes === 0) { etatLien('ouvert, mais MUET depuis 7 s', 'non'); journal('!!! aucune ligne en 7 s (la E3B4 écrit une ligne ETAT toutes les 5 s)', 'non'); } }, 7000);
+  setTimeout(() => envoyer('stat'), 1500);
+}
+function ferme(raison) {
+  lien = null; boutons(false); etatLien('fermé' + (raison ? ' : ' + raison : ''), raison ? 'non' : '');
+  journal('--- fermé' + (raison ? ' : ' + raison : '') + ' ---', raison ? 'non' : 'att');
+}
+
+// ---- Web Serial ----
+$('btSerie').onclick = async () => {
+  try {
+    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: VID_ESP }] });
+    await port.open({ baudRate: 115200 });          // ⚠ pas de setSignals : on ne touche ni DTR ni RTS
+    const lecteur = port.readable.getReader(); const dec = new TextDecoder();
+    const ecrivain = port.writable.getWriter(); const enc = new TextEncoder();
+    let actif = true;
+    lien = { type: 'Web Serial',
+      ecrire: t => ecrivain.write(enc.encode(t)),
+      fermer: async () => { actif = false; try { await lecteur.cancel(); } catch (e) {} try { lecteur.releaseLock(); ecrivain.releaseLock(); await port.close(); } catch (e) {} } };
+    ouvertOk('Web Serial');
+    (async () => {
+      try { while (actif) { const { value, done } = await lecteur.read(); if (done) break; if (value) octetsRecus(dec.decode(value, { stream: true }), value.length); } }
+      catch (e) { if (actif) { ferme('lecture interrompue (' + e.message + ')'); return; } }
+      if (actif) ferme('la carte a disparu');
+    })();
+  } catch (e) { journal('!!! Web Serial : ' + e.message, 'non'); }
+};
+
+// ---- WebUSB (si Web Serial manque) : interface CDC Data de la S3, sans requete de controle ----
+$('btUsb').onclick = async () => {
+  try {
+    const dev = await navigator.usb.requestDevice({ filters: [{ vendorId: VID_ESP }] });
+    await dev.open(); if (!dev.configuration) await dev.selectConfiguration(1);
+    let itf = null, epIn = null, epOut = null;
+    for (const i of dev.configuration.interfaces) {
+      const a = i.alternates[0];
+      if (a.interfaceClass === 0x0A) { itf = i.interfaceNumber; for (const ep of a.endpoints) { if (ep.type === 'bulk' && ep.direction === 'in') epIn = ep; if (ep.type === 'bulk' && ep.direction === 'out') epOut = ep; } }
+    }
+    if (itf === null || !epIn || !epOut) throw new Error('interface CDC Data introuvable');
+    await dev.claimInterface(itf);
+    const dec = new TextDecoder(); const enc = new TextEncoder(); let actif = true;
+    lien = { type: 'WebUSB',
+      ecrire: t => dev.transferOut(epOut.endpointNumber, enc.encode(t)),
+      fermer: async () => { actif = false; try { await dev.releaseInterface(itf); await dev.close(); } catch (e) {} } };
+    ouvertOk('WebUSB');
+    (async () => {
+      try { while (actif) { const r = await dev.transferIn(epIn.endpointNumber, 512); if (r.data && r.data.byteLength) octetsRecus(dec.decode(r.data, { stream: true }), r.data.byteLength); } }
+      catch (e) { if (actif) ferme('lecture interrompue (' + e.message + ')'); }
+    })();
+  } catch (e) { journal('!!! WebUSB : ' + e.message, 'non'); }
+};
+
+$('btFermer').onclick = async () => { const l = lien; if (!l) return; lien = null; await l.fermer(); ferme(''); };
+$('btEffacer').onclick = () => { $('journal').textContent = ''; };
+if ('serial' in navigator) navigator.serial.addEventListener('disconnect', () => { if (lien && lien.type === 'Web Serial') { const l = lien; l.fermer(); ferme('câble débranché'); } });
+if ('usb' in navigator) navigator.usb.addEventListener('disconnect', () => { if (lien && lien.type === 'WebUSB') { const l = lien; l.fermer(); ferme('câble débranché'); } });
+journal('Prêt. ' + ('serial' in navigator ? 'Web Serial présent.' : 'Web Serial ABSENT.') + ' ' + ('usb' in navigator ? 'WebUSB présent.' : 'WebUSB ABSENT.'));
+</script>
+</body>
+</html>
