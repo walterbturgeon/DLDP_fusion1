@@ -45,10 +45,11 @@ button:disabled { opacity:.45; cursor:default; }
     <h2>2. Ouvrir la E3B4</h2>
     <div class="rang">
       <button class="prim" id="btSerie">Ouvrir (Web Serial)</button>
+      <button class="prim" id="btSerieTous">Web Serial : tous les ports</button>
       <button id="btUsb">Ouvrir (WebUSB)</button>
       <button id="btFermer" disabled>Fermer</button>
     </div>
-    <p class="note">Branche la E3B4 à la tablette par le câble OTG, puis touche un bouton et choisis la carte « USB JTAG/serial debug unit ».</p>
+    <p class="note">Branche la E3B4 à la tablette par le câble OTG, puis touche un bouton et choisis la carte « USB JTAG/serial debug unit ». « Tous les ports » montre la liste sans filtre (v2).</p>
   </section>
 
   <section class="carte">
@@ -103,11 +104,13 @@ capacite('WebUSB', 'usb' in navigator);
 capacite('Page sécurisée (https)', window.isSecureContext);
 capacite('Chrome', !!chrome, chrome ? 'version ' + chrome : 'pas Chrome');
 $('btSerie').disabled = !('serial' in navigator);
+$('btSerieTous').disabled = !('serial' in navigator);
 $('btUsb').disabled = !('usb' in navigator);
 
 function etatLien(t, classe) { const v = $('vLien'); v.textContent = t; v.className = 'v ' + (classe || ''); }
 function boutons(ouvert) {
   $('btSerie').disabled = ouvert || !('serial' in navigator);
+  $('btSerieTous').disabled = ouvert || !('serial' in navigator);
   $('btUsb').disabled = ouvert || !('usb' in navigator);
   $('btFermer').disabled = !ouvert;
   document.querySelectorAll('#mots button').forEach(b => b.disabled = !ouvert);
@@ -155,9 +158,12 @@ function ferme(raison) {
 }
 
 // ---- Web Serial ----
-$('btSerie').onclick = async () => {
+function hex4(n) { return n === undefined ? '?' : '0x' + n.toString(16).toUpperCase().padStart(4, '0'); }
+async function ouvrirSerie(avecFiltre) {
   try {
-    const port = await navigator.serial.requestPort({ filters: [{ usbVendorId: VID_ESP }] });
+    const port = await navigator.serial.requestPort(avecFiltre ? { filters: [{ usbVendorId: VID_ESP }] } : {});
+    const inf = port.getInfo ? port.getInfo() : {};
+    journal('port choisi : VID ' + hex4(inf.usbVendorId) + ' PID ' + hex4(inf.usbProductId) + (inf.bluetoothServiceClassId ? ' Bluetooth ' + inf.bluetoothServiceClassId : ''), 'att');
     await port.open({ baudRate: 115200 });          // ⚠ pas de setSignals : on ne touche ni DTR ni RTS
     const lecteur = port.readable.getReader(); const dec = new TextDecoder();
     const ecrivain = port.writable.getWriter(); const enc = new TextEncoder();
@@ -172,37 +178,49 @@ $('btSerie').onclick = async () => {
       if (actif) ferme('la carte a disparu');
     })();
   } catch (e) { journal('!!! Web Serial : ' + e.message, 'non'); }
-};
+}
+$('btSerie').onclick = () => ouvrirSerie(true);
+$('btSerieTous').onclick = () => ouvrirSerie(false);
+if ('serial' in navigator) navigator.serial.getPorts().then(p => journal('ports Web Serial deja permis : ' + p.length + (p.length ? ' (' + p.map(x => { const i = x.getInfo(); return 'VID ' + hex4(i.usbVendorId) + ' PID ' + hex4(i.usbProductId); }).join(', ') + ')' : '')));
 
-// ---- WebUSB (si Web Serial manque) : interface CDC Data de la S3, sans requete de controle ----
+// ---- WebUSB (si Web Serial manque) : comme le polyfill de Google, l'interface de CONTROLE (classe 2) puis celle
+// de DONNEES (classe 0x0A), sans requete de controle. [v2] un echec referme la carte et dit quelle interface a refuse.
 $('btUsb').onclick = async () => {
+  let dev = null;
   try {
-    const dev = await navigator.usb.requestDevice({ filters: [{ vendorId: VID_ESP }] });
+    dev = await navigator.usb.requestDevice({ filters: [{ vendorId: VID_ESP }] });
+    journal('carte USB : VID ' + hex4(dev.vendorId) + ' PID ' + hex4(dev.productId) + ' ' + (dev.productName || ''), 'att');
     await dev.open(); if (!dev.configuration) await dev.selectConfiguration(1);
-    let itf = null, epIn = null, epOut = null;
+    let itfCtl = null, itf = null, epIn = null, epOut = null;
     for (const i of dev.configuration.interfaces) {
       const a = i.alternates[0];
+      journal('  interface ' + i.interfaceNumber + ' : classe 0x' + a.interfaceClass.toString(16) + (i.claimed ? ' (DEJA PRISE)' : ''));
+      if (a.interfaceClass === 0x02 && itfCtl === null) itfCtl = i.interfaceNumber;
       if (a.interfaceClass === 0x0A) { itf = i.interfaceNumber; for (const ep of a.endpoints) { if (ep.type === 'bulk' && ep.direction === 'in') epIn = ep; if (ep.type === 'bulk' && ep.direction === 'out') epOut = ep; } }
     }
     if (itf === null || !epIn || !epOut) throw new Error('interface CDC Data introuvable');
-    await dev.claimInterface(itf);
+    if (itfCtl !== null) { try { await dev.claimInterface(itfCtl); journal('  interface de controle ' + itfCtl + ' : prise'); } catch (e) { throw new Error('interface de controle ' + itfCtl + ' refusee (' + e.message + ')'); } }
+    try { await dev.claimInterface(itf); } catch (e) { throw new Error('interface de donnees ' + itf + ' refusee (' + e.message + ')'); }
     const dec = new TextDecoder(); const enc = new TextEncoder(); let actif = true;
     lien = { type: 'WebUSB',
       ecrire: t => dev.transferOut(epOut.endpointNumber, enc.encode(t)),
-      fermer: async () => { actif = false; try { await dev.releaseInterface(itf); await dev.close(); } catch (e) {} } };
+      fermer: async () => { actif = false; try { await dev.releaseInterface(itf); if (itfCtl !== null) await dev.releaseInterface(itfCtl); await dev.close(); } catch (e) {} } };
     ouvertOk('WebUSB');
     (async () => {
       try { while (actif) { const r = await dev.transferIn(epIn.endpointNumber, 512); if (r.data && r.data.byteLength) octetsRecus(dec.decode(r.data, { stream: true }), r.data.byteLength); } }
       catch (e) { if (actif) ferme('lecture interrompue (' + e.message + ')'); }
     })();
-  } catch (e) { journal('!!! WebUSB : ' + e.message, 'non'); }
+  } catch (e) {
+    journal('!!! WebUSB : ' + e.message, 'non');
+    if (dev && dev.opened && !lien) { try { await dev.close(); journal('carte refermee (elle reste libre pour Web Serial)'); } catch (e2) {} }
+  }
 };
 
 $('btFermer').onclick = async () => { const l = lien; if (!l) return; lien = null; await l.fermer(); ferme(''); };
 $('btEffacer').onclick = () => { $('journal').textContent = ''; };
 if ('serial' in navigator) navigator.serial.addEventListener('disconnect', () => { if (lien && lien.type === 'Web Serial') { const l = lien; l.fermer(); ferme('câble débranché'); } });
 if ('usb' in navigator) navigator.usb.addEventListener('disconnect', () => { if (lien && lien.type === 'WebUSB') { const l = lien; l.fermer(); ferme('câble débranché'); } });
-journal('Prêt. ' + ('serial' in navigator ? 'Web Serial présent.' : 'Web Serial ABSENT.') + ' ' + ('usb' in navigator ? 'WebUSB présent.' : 'WebUSB ABSENT.'));
+journal('Prêt (page v2). ' + ('serial' in navigator ? 'Web Serial présent.' : 'Web Serial ABSENT.') + ' ' + ('usb' in navigator ? 'WebUSB présent.' : 'WebUSB ABSENT.'));
 </script>
 </body>
 </html>
